@@ -11,6 +11,7 @@ interface KeysFile {
   fal: string[];
   stability: string[];
   youtube: string[];
+  groq: string[];
 }
 
 export type Provider = keyof KeysFile;
@@ -21,6 +22,7 @@ const rotationIndex: Record<Provider, number> = {
   fal: 0,
   stability: 0,
   youtube: 0,
+  groq: 0,
 };
 
 function loadKeys(): KeysFile {
@@ -102,3 +104,4 @@ export function markExhausted(provider: Provider, keyIndex: number): void {
     rotationIndex[provider]++;
   }
 }
+

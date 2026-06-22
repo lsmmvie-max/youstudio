@@ -4,6 +4,7 @@ import { getKey, markUsed, markExhausted, getAllKeys, getDailyUsage } from "./ke
 const router = Router();
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const OLLAMA_URL = "http://localhost:11434/api/chat";
 
 interface ChatRequest {
@@ -23,7 +24,24 @@ async function callOpenRouter(body: ChatRequest, apiKey: string): Promise<global
       "X-Title": "YouStudio",
     },
     body: JSON.stringify({
-      model: body.model ?? "anthropic/claude-sonnet-4-20250514",
+      model: body.model ?? "anthropic/claude-sonnet-4",
+      messages: body.messages,
+      temperature: body.temperature ?? 0.7,
+      max_tokens: body.max_tokens ?? 4096,
+      stream: body.stream ?? false,
+    }),
+  });
+}
+
+async function callGroq(body: ChatRequest, apiKey: string): Promise<globalThis.Response> {
+  return fetch(GROQ_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: body.model ?? "meta-llama/llama-4-scout-17b-16e-instruct",
       messages: body.messages,
       temperature: body.temperature ?? 0.7,
       max_tokens: body.max_tokens ?? 4096,
@@ -60,12 +78,12 @@ router.post("/chat", async (req: Request, res: Response) => {
   const keyCount = getAllKeys("openrouter").length;
   for (let attempt = 0; attempt < keyCount; attempt++) {
     const entry = getKey("openrouter");
-    if (!entry) break;
+    if (!entry || !entry.key) continue;
 
     try {
       const response = await callOpenRouter(body, entry.key);
 
-      if (response.status === 429) {
+      if (!response.ok) {
         markExhausted("openrouter", entry.index);
         continue;
       }
@@ -100,6 +118,50 @@ router.post("/chat", async (req: Request, res: Response) => {
     }
   }
 
+  // Fallback: OpenRouter → Groq → Ollama
+  const groqKeyCount = getAllKeys("groq").length;
+  for (let attempt = 0; attempt < groqKeyCount; attempt++) {
+    const entry = getKey("groq");
+    if (!entry || !entry.key) continue;
+
+    try {
+      const groqRes = await callGroq(body, entry.key);
+
+      if (!groqRes.ok) {
+        markExhausted("groq", entry.index);
+        continue;
+      }
+
+      markUsed("groq", entry.index);
+
+      if (body.stream) {
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        const reader = groqRes.body?.getReader();
+        if (!reader) {
+          res.status(500).json({ error: "No response stream" });
+          return;
+        }
+        const pump = async () => {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) { res.end(); return; }
+            res.write(value);
+          }
+        };
+        await pump();
+      } else {
+        const data = await groqRes.json();
+        res.status(groqRes.status).json({ ...(data as object), _fallback: "groq" });
+      }
+      return;
+    } catch {
+      markExhausted("groq", entry.index);
+      continue;
+    }
+  }
+
   // Fallback to Ollama
   try {
     const ollamaRes = await callOllama(body);
@@ -122,7 +184,7 @@ router.post("/chat", async (req: Request, res: Response) => {
   } catch {
     res.status(503).json({
       error: "All AI providers unavailable",
-      detail: "OpenRouter keys exhausted and Ollama is not reachable",
+      detail: "OpenRouter and Groq keys exhausted and Ollama is not reachable",
     });
   }
 });
