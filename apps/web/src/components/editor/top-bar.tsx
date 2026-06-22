@@ -22,6 +22,9 @@ export function TopBar() {
         <Link to="/script" className="inline-flex h-8 items-center rounded-md px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
           Script Studio
         </Link>
+        <Link to="/voice" className="inline-flex h-8 items-center rounded-md px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+          Voice Booth
+        </Link>
         <Button variant="ghost" size="sm">
           Settings
         </Button>

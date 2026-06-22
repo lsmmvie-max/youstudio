@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import aiRouter from "./ai-router.js";
 import imageRouter from "./image-router.js";
+import voiceRouter from "./voice-router.js";
 import { startMcpServer } from "./mcp-server.js";
 import { getDailyUsage, type Provider } from "./key-manager.js";
 import { runOvernightBrain } from "./overnight-brain.js";
@@ -18,6 +19,7 @@ app.use(express.json({ limit: "50mb" }));
 
 app.use("/ai", aiRouter);
 app.use("/image", imageRouter);
+app.use("/voice", voiceRouter);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", version: "0.1.0", name: "YouStudio Server" });
