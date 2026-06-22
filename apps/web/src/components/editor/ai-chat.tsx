@@ -35,7 +35,7 @@ export function AiChat() {
           messages: history.map((m) => ({ role: m.role, content: m.content })),
         }),
       })
-      const data = await res.json()
+      const data = (await res.json()) as { choices?: { message?: { content?: string } }[] }
       const reply = data.choices?.[0]?.message?.content ?? 'No response'
       setMessages((prev) => [...prev, { role: 'assistant', content: reply }])
     } catch {
@@ -87,7 +87,7 @@ export function AiChat() {
         </div>
       </ScrollArea>
 
-      <div className="shrink-0 border-t border-border p-2">
+      <div className="relative z-10 shrink-0 border-t border-border p-2">
         <form
           onSubmit={(e) => {
             e.preventDefault()
@@ -96,10 +96,11 @@ export function AiChat() {
           className="flex gap-1.5"
         >
           <input
+            type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask AI…"
-            className="h-7 flex-1 rounded-md border border-input bg-input/20 px-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none"
+            className="h-7 flex-1 rounded-md border border-border bg-background px-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
           />
           <Button type="submit" size="sm" disabled={loading || !input.trim()}>
             Send

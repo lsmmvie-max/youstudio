@@ -243,7 +243,7 @@ function ScriptStudio() {
           </div>
 
           {/* Right panel — Editing Script */}
-          <div className="flex w-[300px] shrink-0 flex-col border-l border-border bg-muted/20">
+          <div className="flex w-[300px] shrink-0 flex-col overflow-hidden border-l border-border bg-muted/20">
             <div className="border-b border-border px-3 py-2">
               <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Editing Script</span>
             </div>

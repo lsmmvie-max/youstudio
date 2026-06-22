@@ -93,7 +93,17 @@ function MorningBrief() {
           )}
           {running && <RunningState />}
           {!loading && !running && (error || !manifest) && <EmptyState onRun={handleRunBrain} />}
-          {!loading && !running && manifest && <BriefContent manifest={manifest} />}
+          {!loading && !running && manifest && <BriefContent manifest={manifest} onRegenerate={async () => {
+            setRunning(true)
+            try {
+              await fetch('http://localhost:3737/brief/today', { method: 'DELETE' })
+              const res = await fetch('http://localhost:3737/brief/run', { method: 'POST' })
+              if (!res.ok) throw new Error()
+              const m = await res.json() as Manifest
+              setManifest(m)
+              setError(false)
+            } catch { setError(true) } finally { setRunning(false) }
+          }} />}
         </div>
       </ScrollArea>
     </div>
@@ -104,7 +114,7 @@ function renderMd(text: string): string {
   return marked.parse(text, { async: false }) as string
 }
 
-function BriefContent({ manifest }: { manifest: Manifest }) {
+function BriefContent({ manifest, onRegenerate }: { manifest: Manifest; onRegenerate: () => void }) {
   const navigate = useNavigate()
 
   const handleStartEpisode = () => {
@@ -114,9 +124,14 @@ function BriefContent({ manifest }: { manifest: Manifest }) {
 
   return (
     <div className="flex flex-col gap-8">
-      <div>
-        <p className="mb-2 text-xs font-medium uppercase tracking-widest text-primary">{manifest.date}</p>
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">{manifest.title}</h1>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="mb-2 text-xs font-medium uppercase tracking-widest text-primary">{manifest.date}</p>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">{manifest.title}</h1>
+        </div>
+        <Button size="sm" variant="outline" className="shrink-0 text-xs" onClick={onRegenerate}>
+          Regenerate Episode
+        </Button>
       </div>
 
       <div className="rounded-lg border border-border bg-muted/30 p-4">

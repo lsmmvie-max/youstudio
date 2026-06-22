@@ -49,7 +49,7 @@ function Editor() {
             <TabsContent value="properties" className="min-h-0 flex-1 overflow-auto">
               <PropertiesPanel />
             </TabsContent>
-            <TabsContent value="ai" className="min-h-0 flex-1 overflow-hidden">
+            <TabsContent value="ai" className="min-h-0 flex-1 overflow-hidden [&>div]:h-full">
               <AiChat />
             </TabsContent>
           </Tabs>

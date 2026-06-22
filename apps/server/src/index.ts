@@ -56,6 +56,23 @@ app.get("/brief/today", (_req, res) => {
   }
 });
 
+app.delete("/brief/today", (_req, res) => {
+  try {
+    if (!fs.existsSync(QUEUE_DIR)) {
+      res.json({ ok: true, message: "No queue directory" });
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const manifestPath = path.join(QUEUE_DIR, today, "manifest.json");
+    if (fs.existsSync(manifestPath)) {
+      fs.unlinkSync(manifestPath);
+    }
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ error: "Failed to delete manifest" });
+  }
+});
+
 app.use("/brief/image", express.static(QUEUE_DIR));
 
 app.get("/brief/script", (_req, res) => {

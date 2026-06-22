@@ -161,18 +161,15 @@ function Settings() {
                   <span className="mb-4 block text-xs font-bold uppercase tracking-widest text-muted-foreground">Cloudflare</span>
                   <div className="mb-4">
                     <label className="mb-1 block text-[10px] font-semibold text-muted-foreground/70">Account ID</label>
-                    <Input value={keys.cloudflare.accountId}
-                      onChange={(e) => setKeys({ ...keys, cloudflare: { ...keys.cloudflare, accountId: e.target.value } })}
-                      className="font-mono text-xs" placeholder="Account ID" />
+                    <KeyInput idx={-1} value={keys.cloudflare.accountId} provider="cloudflare" label="Account"
+                      onChange={(v) => setKeys({ ...keys, cloudflare: { ...keys.cloudflare, accountId: v } })}
+                      onTest={() => {}} />
                   </div>
                   {keys.cloudflare.tokens.map((tok, i) => (
-                    <div key={i} className="mb-2 flex items-center gap-2">
-                      <span className="w-12 shrink-0 text-right text-[10px] text-muted-foreground">Token {i + 1}</span>
-                      <Input value={tok} onChange={(e) => setKeys({
-                        ...keys, cloudflare: { ...keys.cloudflare, tokens: updateArr(keys.cloudflare.tokens, i, e.target.value) }
-                      })} className="font-mono text-xs" placeholder="cfut_..." />
-                      <TestButton status={testResults[`cloudflare-${i}`]} disabled={!tok} onClick={() => testKey('cloudflare', tok, i)} />
-                    </div>
+                    <KeyInput key={i} idx={i} value={tok} provider="cloudflare" label="Cloudflare"
+                      onChange={(v) => setKeys({ ...keys, cloudflare: { ...keys.cloudflare, tokens: updateArr(keys.cloudflare.tokens, i, v) } })}
+                      testStatus={testResults[`cloudflare-${i}`]}
+                      onTest={() => testKey('cloudflare', tok, i)} />
                   ))}
                 </div>
                 <KeySection label="fal.ai" keys={keys.fal} provider="fal"
@@ -307,12 +304,43 @@ function KeySection({ label, keys, provider, onChange, testResults, onTest }: {
     <div className="rounded-lg border border-border bg-muted/20 p-5">
       <span className="mb-4 block text-xs font-bold uppercase tracking-widest text-muted-foreground">{label}</span>
       {keys.map((key, i) => (
-        <div key={i} className="mb-2 flex items-center gap-2">
-          <span className="w-12 shrink-0 text-right text-[10px] text-muted-foreground">Key {i + 1}</span>
-          <Input value={key} onChange={(e) => onChange(i, e.target.value)} className="font-mono text-xs" placeholder={`${label} API key`} />
-          <TestButton status={testResults[`${provider}-${i}`]} disabled={!key} onClick={() => onTest(provider, key, i)} />
-        </div>
+        <KeyInput key={i} idx={i} value={key} provider={provider} label={label}
+          onChange={(v) => onChange(i, v)} testStatus={testResults[`${provider}-${i}`]}
+          onTest={() => onTest(provider, key, i)} />
       ))}
+    </div>
+  )
+}
+
+function KeyInput({ idx, value, label, onChange, testStatus, onTest }: {
+  idx: number; value: string; provider?: string; label: string
+  onChange: (v: string) => void; testStatus?: 'ok' | 'fail' | 'testing'; onTest: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [localVal, setLocalVal] = useState('')
+  const isMasked = value.endsWith('...')
+
+  const handleFocus = () => {
+    setEditing(true)
+    setLocalVal(isMasked ? '' : value)
+  }
+  const handleBlur = () => {
+    setEditing(false)
+    if (localVal) onChange(localVal)
+  }
+
+  return (
+    <div className="mb-2 flex items-center gap-2">
+      <span className="w-12 shrink-0 text-right text-[10px] text-muted-foreground">Key {idx + 1}</span>
+      <Input
+        value={editing ? localVal : value}
+        onChange={(e) => setLocalVal(e.target.value)}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        className="font-mono text-xs"
+        placeholder={editing ? `Paste new ${label} key` : `${label} API key`}
+      />
+      <TestButton status={testStatus} disabled={!value || isMasked} onClick={onTest} />
     </div>
   )
 }

@@ -39,14 +39,22 @@ function Packaging() {
       .catch(() => {})
   }, [])
 
+  const [genError, setGenError] = useState<string | null>(null)
+
   const generatePackaging = async () => {
     if (!concept.trim()) return
     setGenerating(true)
     setExported(false)
+    setGenError(null)
+
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 60_000)
+
     try {
       const res = await fetch(`${API}/ai/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           messages: [
             {
@@ -68,9 +76,11 @@ Respond with ONLY the JSON object.`,
           ],
         }),
       })
+      clearTimeout(timeout)
       if (!res.ok) throw new Error()
-      const data = (await res.json()) as { reply: string }
-      const jsonStr = data.reply.replace(/```json?\n?/g, '').replace(/```/g, '').trim()
+      const data = (await res.json()) as { choices?: { message?: { content?: string } }[] }
+      const raw = data.choices?.[0]?.message?.content ?? ''
+      const jsonStr = raw.replace(/```json?\n?/g, '').replace(/```/g, '').trim()
       const parsed = JSON.parse(jsonStr) as {
         titles: TitleOption[]
         description: string
@@ -80,10 +90,15 @@ Respond with ONLY the JSON object.`,
       setSelectedTitle(0)
       setDescription(parsed.description)
       setTags(parsed.tags)
-    } catch {
-      setTitles([{ title: episodeTitle || concept, style: 'direct' }])
-      setDescription(`Check out this video about ${concept}.\n\n00:00 Intro\n00:30 Main Content\n\n#shorts #youtube`)
-      setTags(concept.split(' ').join(', '))
+    } catch (err) {
+      clearTimeout(timeout)
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setGenError('AI response timed out, try again.')
+      } else {
+        setTitles([{ title: episodeTitle || concept, style: 'direct' }])
+        setDescription(`Check out this video about ${concept}.\n\n00:00 Intro\n00:30 Main Content\n\n#shorts #youtube`)
+        setTags(concept.split(' ').join(', '))
+      }
     } finally {
       setGenerating(false)
     }
@@ -159,9 +174,12 @@ Respond with ONLY the JSON object.`,
               className="mb-3 w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-primary/50"
               rows={2}
             />
-            <Button onClick={generatePackaging} disabled={generating || !concept.trim()}>
-              {generating ? 'Generating...' : 'Generate YouTube Package'}
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button onClick={generatePackaging} disabled={generating || !concept.trim()}>
+                {generating ? 'Generating...' : 'Generate YouTube Package'}
+              </Button>
+              {genError && <span className="text-xs text-destructive">{genError}</span>}
+            </div>
           </div>
 
           {/* YouTube Package */}

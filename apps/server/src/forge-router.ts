@@ -1,10 +1,10 @@
 import { Router, type Request, type Response } from "express";
 import fs from "fs";
 import path from "path";
+import { generateImage } from "./image-router.js";
 
 const CHARACTERS_DIR = "C:\\YouStudio\\characters";
 const ASSETS_DIR = "C:\\YouStudio\\assets";
-const IMAGE_GEN_URL = "http://localhost:3737/image/generate";
 
 const router = Router();
 
@@ -136,23 +136,11 @@ router.post("/generate", async (req: Request, res: Response) => {
       : prompt;
 
   try {
-    const genRes = await fetch(IMAGE_GEN_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        prompt: fullPrompt,
-        width: 1280,
-        height: 720,
-      }),
+    const data = await generateImage({
+      prompt: fullPrompt,
+      width: 1280,
+      height: 720,
     });
-
-    if (!genRes.ok) {
-      const err = await genRes.json();
-      res.status(genRes.status).json(err);
-      return;
-    }
-
-    const data = (await genRes.json()) as { url: string; provider: string };
 
     const today = getTodayString();
     const outDir = path.join(ASSETS_DIR, today);
@@ -161,7 +149,6 @@ router.post("/generate", async (req: Request, res: Response) => {
     const outName = filename ?? `scene_${Date.now()}.png`;
     const outPath = path.join(outDir, outName);
 
-    // Download the image from the provider URL and save locally
     if (data.url.startsWith("http")) {
       const imgRes = await fetch(data.url);
       if (!imgRes.ok) throw new Error("Failed to download generated image");

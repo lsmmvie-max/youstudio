@@ -96,25 +96,37 @@ function AssetForge() {
     }
   }
 
+  const [loadError, setLoadError] = useState<string | null>(null)
+
   const loadFromEpisode = async () => {
+    setLoadError(null)
     try {
       const res = await fetch(`${API}/brief/today`)
-      if (!res.ok) return
-      const manifest = (await res.json()) as {
-        imagePrompts?: { scene: number; prompt: string; filename: string }[]
-        editingScript?: { style: 'LIGHT' | 'INTENSE' }[]
+      if (!res.ok) {
+        setLoadError('No episode found. Run the Overnight Brain first.')
+        return
       }
-      if (!manifest.imagePrompts?.length) return
+      const manifest = (await res.json()) as {
+        imagePrompts?: { scene?: number; prompt?: string; filename?: string }[]
+        editingScript?: { style?: 'LIGHT' | 'INTENSE' }[]
+      }
+      const prompts = (manifest.imagePrompts ?? []).filter((ip) => ip.prompt)
+      if (prompts.length === 0) {
+        setLoadError('Episode has no image prompts.')
+        return
+      }
       setQueue(
-        manifest.imagePrompts.map((ip, i) => ({
-          scene: ip.scene,
-          prompt: ip.prompt,
-          filename: ip.filename,
+        prompts.map((ip, i) => ({
+          scene: ip.scene ?? i + 1,
+          prompt: ip.prompt ?? '',
+          filename: ip.filename ?? `scene_${String(i + 1).padStart(3, '0')}.png`,
           style: manifest.editingScript?.[i]?.style ?? 'LIGHT',
           status: 'pending',
         }))
       )
-    } catch {}
+    } catch {
+      setLoadError('Failed to load episode data.')
+    }
   }
 
   const generateAll = async () => {
@@ -312,9 +324,12 @@ function AssetForge() {
             <div className="min-h-0 flex-1 overflow-y-auto">
               <div className="flex flex-col gap-1.5 p-4">
                 {queue.length === 0 && (
-                  <p className="py-8 text-center text-xs text-muted-foreground/50">
-                    Click "Load from Episode" to import image prompts from today's manifest.
-                  </p>
+                  <div className="py-8 text-center">
+                    <p className="text-xs text-muted-foreground/50">
+                      Click "Load from Episode" to import image prompts from today's manifest.
+                    </p>
+                    {loadError && <p className="mt-2 text-xs text-destructive">{loadError}</p>}
+                  </div>
                 )}
                 {queue.map((item, i) => (
                   <div

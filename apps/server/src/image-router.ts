@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import fs from "fs";
 import path from "path";
-import { getKey, markUsed, markExhausted, getAllKeys, getDailyUsage, getCloudflareConfig } from "./key-manager.js";
+import { getKey, markUsed, markExhausted, getAllKeys, getDailyUsage, getCloudflareConfig, type Provider } from "./key-manager.js";
 
 const router = Router();
 
@@ -190,7 +190,7 @@ async function callStability(body: ImageRequest, apiKey: string): Promise<{ url:
 }
 
 async function tryProvider(
-  provider: string,
+  provider: Provider,
   callFn: (body: ImageRequest, key: string) => Promise<{ url: string }>,
   body: ImageRequest,
 ): Promise<{ provider: string; url: string } | null> {
@@ -282,5 +282,32 @@ router.get("/test", (_req: Request, res: Response) => {
     fallbackOrder: ["cloudflare", "fal", "gemini", "stability"],
   });
 });
+
+export async function generateImage(body: ImageRequest): Promise<{ provider: string; url: string }> {
+  let result: { provider: string; url: string } | null = null;
+
+  const cf = getCloudflareConfig();
+  if (cf.accountId && cf.token) {
+    try {
+      const r = await callCloudflare(body, cf.accountId, cf.token);
+      result = { provider: "cloudflare", ...r };
+    } catch (err) {
+      console.error("[image] cloudflare failed:", (err as Error).message);
+    }
+  }
+
+  if (!result) {
+    result =
+      (await tryProvider("fal", callFal, body)) ??
+      (await tryProvider("gemini", callGemini, body)) ??
+      (await tryProvider("stability", callStability, body));
+  }
+
+  if (!result) {
+    throw new Error("All image providers unavailable");
+  }
+
+  return result;
+}
 
 export default router;
