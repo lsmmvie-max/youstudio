@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import { Button } from '#/components/ui/button.tsx'
 
 export function TopBar() {
@@ -15,6 +16,9 @@ export function TopBar() {
       </div>
 
       <div className="flex items-center gap-2">
+        <Link to="/brief" className="inline-flex h-8 items-center rounded-md px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+          Morning Brief
+        </Link>
         <Button variant="ghost" size="sm">
           Settings
         </Button>
