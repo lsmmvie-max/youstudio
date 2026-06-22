@@ -4,10 +4,10 @@
   "version": "0.1.0",
   "identifier": "com.youstudio.app",
   "build": {
-    "frontendDist": "../web/dist",
+    "frontendDist": "../web/dist-tauri",
     "devUrl": "http://localhost:5173",
     "beforeDevCommand": "bun dev",
-    "beforeBuildCommand": "bun run --cwd ../web build"
+    "beforeBuildCommand": ""
   },
   "app": {
     "windows": [

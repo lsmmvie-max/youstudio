@@ -31,9 +31,9 @@ export function TopBar() {
         <Link to="/packaging" className="inline-flex h-8 items-center rounded-md px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
           Packaging
         </Link>
-        <Button variant="ghost" size="sm">
+        <Link to="/settings" className="inline-flex h-8 items-center rounded-md px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
           Settings
-        </Button>
+        </Link>
         <Button size="sm">Export</Button>
       </div>
     </div>

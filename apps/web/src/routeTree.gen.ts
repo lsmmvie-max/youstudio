@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as VoiceRouteImport } from './routes/voice'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ScriptRouteImport } from './routes/script'
 import { Route as PackagingRouteImport } from './routes/packaging'
 import { Route as ForgeRouteImport } from './routes/forge'
@@ -19,6 +20,11 @@ import { Route as IndexRouteImport } from './routes/index'
 const VoiceRoute = VoiceRouteImport.update({
   id: '/voice',
   path: '/voice',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ScriptRoute = ScriptRouteImport.update({
@@ -53,6 +59,7 @@ export interface FileRoutesByFullPath {
   '/forge': typeof ForgeRoute
   '/packaging': typeof PackagingRoute
   '/script': typeof ScriptRoute
+  '/settings': typeof SettingsRoute
   '/voice': typeof VoiceRoute
 }
 export interface FileRoutesByTo {
@@ -61,6 +68,7 @@ export interface FileRoutesByTo {
   '/forge': typeof ForgeRoute
   '/packaging': typeof PackagingRoute
   '/script': typeof ScriptRoute
+  '/settings': typeof SettingsRoute
   '/voice': typeof VoiceRoute
 }
 export interface FileRoutesById {
@@ -70,13 +78,28 @@ export interface FileRoutesById {
   '/forge': typeof ForgeRoute
   '/packaging': typeof PackagingRoute
   '/script': typeof ScriptRoute
+  '/settings': typeof SettingsRoute
   '/voice': typeof VoiceRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/brief' | '/forge' | '/packaging' | '/script' | '/voice'
+  fullPaths:
+    | '/'
+    | '/brief'
+    | '/forge'
+    | '/packaging'
+    | '/script'
+    | '/settings'
+    | '/voice'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/brief' | '/forge' | '/packaging' | '/script' | '/voice'
+  to:
+    | '/'
+    | '/brief'
+    | '/forge'
+    | '/packaging'
+    | '/script'
+    | '/settings'
+    | '/voice'
   id:
     | '__root__'
     | '/'
@@ -84,6 +107,7 @@ export interface FileRouteTypes {
     | '/forge'
     | '/packaging'
     | '/script'
+    | '/settings'
     | '/voice'
   fileRoutesById: FileRoutesById
 }
@@ -93,6 +117,7 @@ export interface RootRouteChildren {
   ForgeRoute: typeof ForgeRoute
   PackagingRoute: typeof PackagingRoute
   ScriptRoute: typeof ScriptRoute
+  SettingsRoute: typeof SettingsRoute
   VoiceRoute: typeof VoiceRoute
 }
 
@@ -103,6 +128,13 @@ declare module '@tanstack/react-router' {
       path: '/voice'
       fullPath: '/voice'
       preLoaderRoute: typeof VoiceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/script': {
@@ -149,6 +181,7 @@ const rootRouteChildren: RootRouteChildren = {
   ForgeRoute: ForgeRoute,
   PackagingRoute: PackagingRoute,
   ScriptRoute: ScriptRoute,
+  SettingsRoute: SettingsRoute,
   VoiceRoute: VoiceRoute,
 }
 export const routeTree = rootRouteImport

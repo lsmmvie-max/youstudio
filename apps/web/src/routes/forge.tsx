@@ -64,6 +64,17 @@ function AssetForge() {
     fetchAssets()
   }, [fetchCharacters, fetchAssets])
 
+  const autoloadRef = useRef(false)
+  useEffect(() => {
+    if (autoloadRef.current) return
+    const flag = localStorage.getItem('youstudio-autoload-forge')
+    if (flag) {
+      autoloadRef.current = true
+      localStorage.removeItem('youstudio-autoload-forge')
+      loadFromEpisode()
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   const generateSingle = async () => {
     if (!prompt.trim()) return
     setGenerating(true)

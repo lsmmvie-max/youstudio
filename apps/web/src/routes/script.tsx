@@ -3,6 +3,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { Button } from '#/components/ui/button.tsx'
 import { Input } from '#/components/ui/input.tsx'
 import { ScrollArea } from '#/components/ui/scroll-area.tsx'
+import { marked } from 'marked'
 
 export const Route = createFileRoute('/script')({ component: ScriptStudio })
 
@@ -225,16 +226,15 @@ function ScriptStudio() {
                         rows={Math.max(3, editBuffer.split('\n').length + 1)}
                       />
                     ) : (
-                      <p
+                      <div
                         onClick={() => startEditing(i)}
-                        className={`flex-1 cursor-text rounded px-2 py-1 text-sm leading-relaxed transition-colors ${
+                        className={`flex-1 cursor-text rounded px-2 py-1 text-sm leading-relaxed transition-colors [&_strong]:font-semibold [&_p]:m-0 ${
                           activeParagraph === i
                             ? 'bg-primary/10 text-foreground ring-1 ring-primary/30'
                             : 'text-foreground/80 hover:bg-muted/30'
                         }`}
-                      >
-                        {para}
-                      </p>
+                        dangerouslySetInnerHTML={{ __html: marked.parse(para, { async: false }) as string }}
+                      />
                     )}
                   </div>
                 ))}
@@ -268,7 +268,7 @@ function ScriptStudio() {
                         block.style === 'INTENSE' ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'
                       }`}>{block.style}</span>
                     </div>
-                    <p className="mb-1 text-[11px] leading-snug text-foreground/80">{block.narration.slice(0, 80)}...</p>
+                    <div className="mb-1 text-[11px] leading-snug text-foreground/80 [&_strong]:font-semibold [&_p]:m-0" dangerouslySetInnerHTML={{ __html: marked.parse(block.narration.slice(0, 80) + '...', { async: false }) as string }} />
                     <div className="flex items-center gap-2 text-[9px] text-muted-foreground">
                       <span>{block.characterVariant}</span>
                       <span className="text-muted-foreground/30">|</span>

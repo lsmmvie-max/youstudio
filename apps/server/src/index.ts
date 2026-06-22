@@ -190,6 +190,127 @@ app.post("/keys/reload", (_req, res) => {
   res.json({ ok: true, message: "Keys reloaded from disk" });
 });
 
+const KEYS_PATH = "C:\\YouStudio\\keys.json";
+const PROFILE_PATH = "C:\\YouStudio\\channel-profile.json";
+
+function maskKey(key: string): string {
+  if (!key || key.length < 5) return key ? "****" : "";
+  return key.slice(0, 4) + "...";
+}
+
+app.get("/settings/keys", (_req, res) => {
+  try {
+    const raw = JSON.parse(fs.readFileSync(KEYS_PATH, "utf-8"));
+    const masked = {
+      openrouter: (raw.openrouter ?? []).map(maskKey),
+      groq: (raw.groq ?? []).map(maskKey),
+      cloudflare: {
+        accountId: maskKey(raw.cloudflare?.accountId ?? ""),
+        tokens: (raw.cloudflare?.tokens ?? []).map(maskKey),
+      },
+      fal: (raw.fal ?? []).map(maskKey),
+      stability: (raw.stability ?? []).map(maskKey),
+      youtube: maskKey(typeof raw.youtube === "string" ? raw.youtube : ""),
+    };
+    res.json(masked);
+  } catch {
+    res.status(500).json({ error: "Failed to read keys" });
+  }
+});
+
+app.put("/settings/keys", (req, res) => {
+  try {
+    const existing = JSON.parse(fs.readFileSync(KEYS_PATH, "utf-8"));
+    const body = req.body as Record<string, unknown>;
+
+    const mergeArr = (newArr: string[] | undefined, oldArr: string[]): string[] => {
+      if (!newArr) return oldArr;
+      return newArr.map((v, i) => (v && !v.endsWith("...") ? v : oldArr[i] ?? ""));
+    };
+
+    const updated = {
+      ...existing,
+      openrouter: mergeArr(body.openrouter as string[], existing.openrouter ?? []),
+      groq: mergeArr(body.groq as string[], existing.groq ?? []),
+      fal: mergeArr(body.fal as string[], existing.fal ?? []),
+      stability: mergeArr(body.stability as string[], existing.stability ?? []),
+      zenmux: existing.zenmux ?? [],
+      cloudflare: {
+        accountId: (() => {
+          const cf = body.cloudflare as { accountId?: string; tokens?: string[] } | undefined;
+          const v = cf?.accountId ?? "";
+          return v && !v.endsWith("...") ? v : existing.cloudflare?.accountId ?? "";
+        })(),
+        tokens: mergeArr(
+          (body.cloudflare as { tokens?: string[] })?.tokens,
+          existing.cloudflare?.tokens ?? [],
+        ),
+      },
+      youtube: (() => {
+        const v = body.youtube as string ?? "";
+        return v && !v.endsWith("...") ? v : existing.youtube ?? "";
+      })(),
+    };
+
+    fs.writeFileSync(KEYS_PATH, JSON.stringify(updated, null, 2), "utf-8");
+    reloadKeys();
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ error: "Failed to save keys" });
+  }
+});
+
+app.get("/settings/test-key", async (req, res) => {
+  const provider = String(req.query.provider ?? "");
+  const key = String(req.query.key ?? "");
+  if (!provider || !key) {
+    res.json({ ok: false, error: "provider and key required" });
+    return;
+  }
+  try {
+    let ok = false;
+    if (provider === "openrouter" || provider === "groq") {
+      const base = provider === "openrouter" ? "https://openrouter.ai/api/v1" : "https://api.groq.com/openai/v1";
+      const r = await fetch(`${base}/models`, { headers: { Authorization: `Bearer ${key}` } });
+      ok = r.ok;
+    } else if (provider === "fal") {
+      ok = key.includes(":");
+    } else if (provider === "stability") {
+      const r = await fetch("https://api.stability.ai/v1/user/balance", { headers: { Authorization: `Bearer ${key}` } });
+      ok = r.ok;
+    } else if (provider === "cloudflare") {
+      const r = await fetch("https://api.cloudflare.com/client/v4/user/tokens/verify", { headers: { Authorization: `Bearer ${key}` } });
+      ok = r.ok;
+    } else {
+      ok = key.length > 0;
+    }
+    res.json({ ok });
+  } catch {
+    res.json({ ok: false });
+  }
+});
+
+app.get("/settings/profile", (_req, res) => {
+  try {
+    if (!fs.existsSync(PROFILE_PATH)) {
+      res.json({ channelName: "", mainCharacterName: "", contentStyle: "Storytelling", targetAudienceAge: "", language: "Portuguese" });
+      return;
+    }
+    res.json(JSON.parse(fs.readFileSync(PROFILE_PATH, "utf-8")));
+  } catch {
+    res.status(500).json({ error: "Failed to read profile" });
+  }
+});
+
+app.put("/settings/profile", (req, res) => {
+  try {
+    fs.writeFileSync(PROFILE_PATH, JSON.stringify(req.body, null, 2), "utf-8");
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ error: "Failed to save profile" });
+  }
+});
+
 app.get("/usage", (_req, res) => {
   const providers: Provider[] = ["openrouter", "fal", "stability", "youtube"];
   const usage: Record<string, unknown> = {};

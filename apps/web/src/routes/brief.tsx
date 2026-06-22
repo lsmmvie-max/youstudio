@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { Button } from '#/components/ui/button.tsx'
 import { ScrollArea } from '#/components/ui/scroll-area.tsx'
+import { marked } from 'marked'
 
 export const Route = createFileRoute('/brief')({ component: MorningBrief })
 
@@ -99,7 +100,18 @@ function MorningBrief() {
   )
 }
 
+function renderMd(text: string): string {
+  return marked.parse(text, { async: false }) as string
+}
+
 function BriefContent({ manifest }: { manifest: Manifest }) {
+  const navigate = useNavigate()
+
+  const handleStartEpisode = () => {
+    localStorage.setItem('youstudio-autoload-forge', '1')
+    navigate({ to: '/script' })
+  }
+
   return (
     <div className="flex flex-col gap-8">
       <div>
@@ -109,7 +121,7 @@ function BriefContent({ manifest }: { manifest: Manifest }) {
 
       <div className="rounded-lg border border-border bg-muted/30 p-4">
         <p className="mb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Concept</p>
-        <p className="text-sm leading-relaxed text-foreground">{manifest.concept}</p>
+        <div className="prose prose-sm prose-invert max-w-none text-sm leading-relaxed text-foreground [&_strong]:text-foreground [&_strong]:font-semibold" dangerouslySetInnerHTML={{ __html: renderMd(manifest.concept) }} />
       </div>
 
       <div className="grid grid-cols-3 gap-4">
@@ -133,7 +145,7 @@ function BriefContent({ manifest }: { manifest: Manifest }) {
                 </span>
                 <span className="text-[10px] text-muted-foreground">{block.characterVariant}</span>
               </div>
-              <p className="text-xs leading-relaxed text-foreground/80">{block.narration.slice(0, 120)}...</p>
+              <div className="text-xs leading-relaxed text-foreground/80 [&_strong]:font-semibold" dangerouslySetInnerHTML={{ __html: renderMd(block.narration.slice(0, 120) + '...') }} />
               <p className="mt-1 text-[10px] text-muted-foreground">BG: {block.background}</p>
             </div>
           ))}
@@ -165,7 +177,7 @@ function BriefContent({ manifest }: { manifest: Manifest }) {
         </div>
       </div>
 
-      <Button size="lg" className="mt-2 w-full bg-primary text-primary-foreground hover:bg-primary/90 py-6 text-base font-semibold">
+      <Button size="lg" className="mt-2 w-full bg-primary text-primary-foreground hover:bg-primary/90 py-6 text-base font-semibold" onClick={handleStartEpisode}>
         Start Today's Episode
       </Button>
     </div>
