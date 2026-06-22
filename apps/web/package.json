@@ -1,5 +1,5 @@
 {
-  "name": "@opencut/web",
+  "name": "@youstudio/web",
   "private": true,
   "type": "module",
   "imports": {
