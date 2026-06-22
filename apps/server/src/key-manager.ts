@@ -11,6 +11,7 @@ interface KeysFile {
   gemini: string[];
   fal: string[];
   stability: string[];
+  zenmux: string[];
   youtube: string[];
   groq: string[];
 }
@@ -23,6 +24,7 @@ const rotationIndex: Record<Provider, number> = {
   gemini: 0,
   fal: 0,
   stability: 0,
+  zenmux: 0,
   youtube: 0,
   groq: 0,
 };

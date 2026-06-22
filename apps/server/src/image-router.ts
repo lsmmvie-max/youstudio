@@ -5,6 +5,7 @@ import { getKey, markUsed, markExhausted, getAllKeys, getDailyUsage } from "./ke
 
 const router = Router();
 
+const ZENMUX_URL = "https://zenmux.ai/api/v1/images/generations";
 const GEMINI_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent";
 const FAL_URL = "https://fal.run/fal-ai/flux/dev";
@@ -24,6 +25,41 @@ function ensureDateDir(): string {
   const dir = path.join(ASSETS_DIR, date);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   return dir;
+}
+
+async function callZenMux(body: ImageRequest, apiKey: string): Promise<{ url: string }> {
+  const response = await fetch(ZENMUX_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash-image-free",
+      prompt: body.prompt,
+      n: 1,
+      size: "1024x1024",
+      response_format: "b64_json",
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`ZenMux returned ${response.status}`);
+  }
+
+  const data = (await response.json()) as {
+    data?: { b64_json?: string }[];
+  };
+
+  const b64 = data.data?.[0]?.b64_json;
+  if (!b64) throw new Error("No image data in ZenMux response");
+
+  const dir = ensureDateDir();
+  const filename = `gen_${Date.now()}.png`;
+  const outPath = path.join(dir, filename);
+  fs.writeFileSync(outPath, Buffer.from(b64, "base64"));
+
+  return { url: outPath };
 }
 
 async function callGemini(body: ImageRequest, apiKey: string): Promise<{ url: string }> {
@@ -149,10 +185,11 @@ router.post("/generate", async (req: Request, res: Response) => {
     return;
   }
 
-  // Fallback chain: Gemini → fal.ai → Stability AI
+  // Fallback chain: ZenMux → fal.ai → Gemini → Stability AI
   const result =
-    (await tryProvider("gemini", callGemini, body)) ??
+    (await tryProvider("zenmux", callZenMux, body)) ??
     (await tryProvider("fal", callFal, body)) ??
+    (await tryProvider("gemini", callGemini, body)) ??
     (await tryProvider("stability", callStability, body));
 
   if (result) {
@@ -168,6 +205,7 @@ router.post("/generate", async (req: Request, res: Response) => {
 
 router.get("/usage", (_req: Request, res: Response) => {
   res.json({
+    zenmux: getDailyUsage("zenmux"),
     gemini: getDailyUsage("gemini"),
     fal: getDailyUsage("fal"),
     stability: getDailyUsage("stability"),
@@ -175,7 +213,7 @@ router.get("/usage", (_req: Request, res: Response) => {
 });
 
 router.get("/test", (_req: Request, res: Response) => {
-  const providers = ["gemini", "fal", "stability"] as const;
+  const providers = ["zenmux", "gemini", "fal", "stability"] as const;
   const status = providers.map((p) => {
     const keys = getAllKeys(p);
     const configured = keys.filter((k) => k.length > 0).length;
@@ -192,7 +230,7 @@ router.get("/test", (_req: Request, res: Response) => {
   res.json({
     timestamp: new Date().toISOString(),
     providers: status,
-    fallbackOrder: ["gemini", "fal", "stability"],
+    fallbackOrder: ["zenmux", "fal", "gemini", "stability"],
   });
 });
 
