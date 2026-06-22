@@ -1,10 +1,15 @@
 import { Router, type Request, type Response } from "express";
+import fs from "fs";
+import path from "path";
 import { getKey, markUsed, markExhausted, getAllKeys, getDailyUsage } from "./key-manager.js";
 
 const router = Router();
 
-const FAL_URL = "https://queue.fal.run/fal-ai/flux/dev";
+const GEMINI_URL =
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent";
+const FAL_URL = "https://fal.run/fal-ai/flux/dev";
 const STABILITY_URL = "https://api.stability.ai/v2beta/stable-image/generate/sd3";
+const ASSETS_DIR = "C:\\YouStudio\\assets";
 
 interface ImageRequest {
   prompt: string;
@@ -12,6 +17,43 @@ interface ImageRequest {
   width?: number;
   height?: number;
   steps?: number;
+}
+
+function ensureDateDir(): string {
+  const date = new Date().toISOString().slice(0, 10);
+  const dir = path.join(ASSETS_DIR, date);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+async function callGemini(body: ImageRequest, apiKey: string): Promise<{ url: string }> {
+  const response = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: body.prompt }] }],
+      generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Gemini returned ${response.status}`);
+  }
+
+  const data = (await response.json()) as {
+    candidates?: { content?: { parts?: { inlineData?: { data: string; mimeType: string } }[] } }[];
+  };
+
+  const parts = data.candidates?.[0]?.content?.parts;
+  const imagePart = parts?.find((p) => p.inlineData?.data);
+  if (!imagePart?.inlineData) throw new Error("No image data in Gemini response");
+
+  const dir = ensureDateDir();
+  const filename = `gen_${Date.now()}.png`;
+  const outPath = path.join(dir, filename);
+  fs.writeFileSync(outPath, Buffer.from(imagePart.inlineData.data, "base64"));
+
+  return { url: outPath };
 }
 
 async function callFal(body: ImageRequest, apiKey: string): Promise<{ url: string }> {
@@ -68,14 +110,35 @@ async function callStability(body: ImageRequest, apiKey: string): Promise<{ url:
   const data = (await response.json()) as { image?: string };
   if (!data.image) throw new Error("No image data in Stability response");
 
-  // Stability returns base64 — save to assets and return path
+  const dir = ensureDateDir();
   const filename = `gen_${Date.now()}.png`;
-  const outPath = `C:\\YouStudio\\assets\\${filename}`;
-  const buffer = Buffer.from(data.image, "base64");
-  const fs = await import("fs");
-  fs.writeFileSync(outPath, buffer);
+  const outPath = path.join(dir, filename);
+  fs.writeFileSync(outPath, Buffer.from(data.image, "base64"));
 
   return { url: outPath };
+}
+
+async function tryProvider(
+  provider: "gemini" | "fal" | "stability",
+  callFn: (body: ImageRequest, key: string) => Promise<{ url: string }>,
+  body: ImageRequest,
+): Promise<{ provider: string; url: string } | null> {
+  const keyCount = getAllKeys(provider).length;
+  console.log(`[image] trying ${provider} (${keyCount} keys available)`);
+  for (let attempt = 0; attempt < keyCount; attempt++) {
+    const entry = getKey(provider);
+    if (!entry) break;
+    try {
+      const result = await callFn(body, entry.key);
+      markUsed(provider, entry.index);
+      console.log(`[image] ${provider} key[${entry.index}] succeeded`);
+      return { provider, ...result };
+    } catch (err) {
+      console.error(`[image] ${provider} key[${entry.index}] failed:`, (err as Error).message);
+      markExhausted(provider, entry.index);
+    }
+  }
+  return null;
 }
 
 router.post("/generate", async (req: Request, res: Response) => {
@@ -86,48 +149,29 @@ router.post("/generate", async (req: Request, res: Response) => {
     return;
   }
 
-  // Try all fal.ai keys
-  const falKeyCount = getAllKeys("fal").length;
-  for (let attempt = 0; attempt < falKeyCount; attempt++) {
-    const entry = getKey("fal");
-    if (!entry) break;
+  // Fallback chain: Gemini → fal.ai → Stability AI
+  const result =
+    (await tryProvider("gemini", callGemini, body)) ??
+    (await tryProvider("fal", callFal, body)) ??
+    (await tryProvider("stability", callStability, body));
 
-    try {
-      const result = await callFal(body, entry.key);
-      markUsed("fal", entry.index);
-      res.json({ provider: "fal", ...result });
-      return;
-    } catch {
-      markExhausted("fal", entry.index);
-      continue;
-    }
-  }
-
-  // Fallback to Stability AI
-  const stabKeyCount = getAllKeys("stability").length;
-  for (let attempt = 0; attempt < stabKeyCount; attempt++) {
-    const entry = getKey("stability");
-    if (!entry) break;
-
-    try {
-      const result = await callStability(body, entry.key);
-      markUsed("stability", entry.index);
-      res.json({ provider: "stability", ...result });
-      return;
-    } catch {
-      markExhausted("stability", entry.index);
-      continue;
-    }
+  if (result) {
+    res.json(result);
+    return;
   }
 
   res.status(503).json({
     error: "All image providers unavailable",
-    detail: "fal.ai and Stability AI keys exhausted or unreachable",
+    detail: "Gemini, fal.ai, and Stability AI keys exhausted or unreachable",
   });
 });
 
 router.get("/usage", (_req: Request, res: Response) => {
-  res.json({ fal: getDailyUsage("fal"), stability: getDailyUsage("stability") });
+  res.json({
+    gemini: getDailyUsage("gemini"),
+    fal: getDailyUsage("fal"),
+    stability: getDailyUsage("stability"),
+  });
 });
 
 export default router;

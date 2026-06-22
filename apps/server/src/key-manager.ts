@@ -8,6 +8,7 @@ const DB_PATH = path.join(DATA_DIR, "youstudio.db");
 
 interface KeysFile {
   openrouter: string[];
+  gemini: string[];
   fal: string[];
   stability: string[];
   youtube: string[];
@@ -19,6 +20,7 @@ export type Provider = keyof KeysFile;
 let keys: KeysFile | null = null;
 const rotationIndex: Record<Provider, number> = {
   openrouter: 0,
+  gemini: 0,
   fal: 0,
   stability: 0,
   youtube: 0,
