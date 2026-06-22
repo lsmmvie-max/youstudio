@@ -174,4 +174,26 @@ router.get("/usage", (_req: Request, res: Response) => {
   });
 });
 
+router.get("/test", (_req: Request, res: Response) => {
+  const providers = ["gemini", "fal", "stability"] as const;
+  const status = providers.map((p) => {
+    const keys = getAllKeys(p);
+    const configured = keys.filter((k) => k.length > 0).length;
+    const usage = getDailyUsage(p);
+    return {
+      provider: p,
+      keysTotal: keys.length,
+      keysConfigured: configured,
+      todayRequests: usage.total,
+      perKey: usage.perKey,
+    };
+  });
+
+  res.json({
+    timestamp: new Date().toISOString(),
+    providers: status,
+    fallbackOrder: ["gemini", "fal", "stability"],
+  });
+});
+
 export default router;
