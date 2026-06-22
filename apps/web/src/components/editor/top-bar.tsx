@@ -28,6 +28,9 @@ export function TopBar() {
         <Link to="/forge" className="inline-flex h-8 items-center rounded-md px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
           Asset Forge
         </Link>
+        <Link to="/packaging" className="inline-flex h-8 items-center rounded-md px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+          Packaging
+        </Link>
         <Button variant="ghost" size="sm">
           Settings
         </Button>

@@ -47,9 +47,20 @@ async function callCloudflare(body: ImageRequest, accountId: string, token: stri
     throw new Error(`Cloudflare returned ${response.status}`);
   }
 
-  const buffer = Buffer.from(await response.arrayBuffer());
+  const contentType = response.headers.get("content-type") ?? "";
+  let buffer: Buffer;
+
+  if (contentType.includes("application/json")) {
+    const data = (await response.json()) as { image?: string; result?: { image?: string } };
+    const b64 = data.image ?? data.result?.image;
+    if (!b64) throw new Error("No image data in Cloudflare JSON response");
+    buffer = Buffer.from(b64, "base64");
+  } else {
+    buffer = Buffer.from(await response.arrayBuffer());
+  }
+
   const dir = ensureDateDir();
-  const filename = `gen_${Date.now()}.jpg`;
+  const filename = `gen_${Date.now()}.png`;
   const outPath = path.join(dir, filename);
   fs.writeFileSync(outPath, buffer);
 

@@ -133,6 +133,7 @@ function AssetForge() {
             idx === i ? { ...item, status: 'done', resultUrl: `${API}${data.url}` } : item
           )
         )
+        fetchAssets()
       } catch {
         setQueue((q) => q.map((item, idx) => (idx === i ? { ...item, status: 'error' } : item)))
       }
@@ -331,9 +332,13 @@ function AssetForge() {
                       </div>
                       <p className="text-[11px] leading-snug text-foreground/70">{item.prompt.slice(0, 120)}...</p>
                     </div>
-                    {item.resultUrl && (
-                      <img src={item.resultUrl} alt={`Scene ${item.scene}`} className="size-14 shrink-0 rounded border border-border object-cover" />
-                    )}
+                    {item.resultUrl ? (
+                      <img src={item.resultUrl} alt={`Scene ${item.scene}`} className="h-20 w-32 shrink-0 rounded border border-border object-cover" />
+                    ) : item.status === 'generating' ? (
+                      <div className="flex h-20 w-32 shrink-0 items-center justify-center rounded border border-primary/30 bg-primary/5">
+                        <div className="size-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>

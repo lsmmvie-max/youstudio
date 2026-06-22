@@ -7,7 +7,7 @@ import imageRouter from "./image-router.js";
 import voiceRouter from "./voice-router.js";
 import forgeRouter from "./forge-router.js";
 import { startMcpServer } from "./mcp-server.js";
-import { getDailyUsage, type Provider } from "./key-manager.js";
+import { getDailyUsage, reloadKeys, type Provider } from "./key-manager.js";
 import { runOvernightBrain } from "./overnight-brain.js";
 
 const QUEUE_DIR = "C:\\YouStudio\\queue";
@@ -134,6 +134,60 @@ app.post("/brief/run", async (_req, res) => {
     console.error("[POST /brief/run] Failed:", err);
     res.status(500).json({ error: "Overnight Brain pipeline failed" });
   }
+});
+
+const EXPORTS_DIR = "C:\\YouStudio\\exports";
+
+app.post("/packaging/export-youtube", (req, res) => {
+  try {
+    const { title, description, tags } = req.body as {
+      title?: string;
+      description?: string;
+      tags?: string;
+    };
+
+    const today = new Date().toISOString().slice(0, 10);
+    const dir = path.join(EXPORTS_DIR, today, "youtube");
+    fs.mkdirSync(dir, { recursive: true });
+
+    if (title) fs.writeFileSync(path.join(dir, "title.txt"), title, "utf-8");
+    if (description) fs.writeFileSync(path.join(dir, "description.txt"), description, "utf-8");
+    if (tags) fs.writeFileSync(path.join(dir, "tags.txt"), tags, "utf-8");
+
+    res.json({
+      ok: true,
+      path: dir,
+      files: ["title.txt", "description.txt", "tags.txt"],
+    });
+  } catch {
+    res.status(500).json({ error: "Failed to export YouTube package" });
+  }
+});
+
+app.post("/packaging/export-reel", (req, res) => {
+  try {
+    const { start, end, title } = req.body as {
+      start?: string;
+      end?: string;
+      title?: string;
+    };
+
+    const today = new Date().toISOString().slice(0, 10);
+    const dir = path.join(EXPORTS_DIR, today, "reel");
+    fs.mkdirSync(dir, { recursive: true });
+
+    const metadata = { title: title ?? "", start: start ?? "00:00", end: end ?? "00:15", exportedAt: new Date().toISOString() };
+    fs.writeFileSync(path.join(dir, "reel-metadata.json"), JSON.stringify(metadata, null, 2), "utf-8");
+
+    res.json({ ok: true, path: dir });
+  } catch {
+    res.status(500).json({ error: "Failed to export reel metadata" });
+  }
+});
+
+app.post("/keys/reload", (_req, res) => {
+  reloadKeys();
+  res.json({ ok: true, message: "Keys reloaded from disk" });
 });
 
 app.get("/usage", (_req, res) => {
