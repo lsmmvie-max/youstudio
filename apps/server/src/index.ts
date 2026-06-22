@@ -54,6 +54,72 @@ app.get("/brief/today", (_req, res) => {
 
 app.use("/brief/image", express.static(QUEUE_DIR));
 
+app.get("/brief/script", (_req, res) => {
+  try {
+    if (!fs.existsSync(QUEUE_DIR)) {
+      res.status(404).json({ error: "No script available" });
+      return;
+    }
+
+    const dirs = fs
+      .readdirSync(QUEUE_DIR, { withFileTypes: true })
+      .filter((d) => d.isDirectory() && /^\d{4}-\d{2}-\d{2}/.test(d.name))
+      .map((d) => d.name)
+      .sort()
+      .reverse();
+
+    for (const dir of dirs) {
+      const manifestPath = path.join(QUEUE_DIR, dir, "manifest.json");
+      if (fs.existsSync(manifestPath)) {
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+        res.json({
+          readingScript: manifest.readingScript ?? "",
+          editingScript: manifest.editingScript ?? [],
+          wordCount: manifest.wordCount ?? 0,
+        });
+        return;
+      }
+    }
+
+    res.status(404).json({ error: "No script available" });
+  } catch {
+    res.status(500).json({ error: "Failed to read script" });
+  }
+});
+
+app.get("/brief/story-queue", (_req, res) => {
+  const STORY_QUEUE_PATH = "C:\\YouStudio\\story-queue.json";
+  try {
+    if (!fs.existsSync(STORY_QUEUE_PATH)) {
+      res.json([]);
+      return;
+    }
+    const raw = fs.readFileSync(STORY_QUEUE_PATH, "utf-8").trim();
+    if (!raw) {
+      res.json([]);
+      return;
+    }
+    res.json(JSON.parse(raw));
+  } catch {
+    res.json([]);
+  }
+});
+
+app.put("/brief/story-queue", (req, res) => {
+  const STORY_QUEUE_PATH = "C:\\YouStudio\\story-queue.json";
+  try {
+    const queue = req.body;
+    if (!Array.isArray(queue)) {
+      res.status(400).json({ error: "Expected an array" });
+      return;
+    }
+    fs.writeFileSync(STORY_QUEUE_PATH, JSON.stringify(queue, null, 2), "utf-8");
+    res.json({ ok: true, count: queue.length });
+  } catch {
+    res.status(500).json({ error: "Failed to save story queue" });
+  }
+});
+
 app.post("/brief/run", async (_req, res) => {
   try {
     const manifest = await runOvernightBrain((step, detail) => {

@@ -9,9 +9,15 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ScriptRouteImport } from './routes/script'
 import { Route as BriefRouteImport } from './routes/brief'
 import { Route as IndexRouteImport } from './routes/index'
 
+const ScriptRoute = ScriptRouteImport.update({
+  id: '/script',
+  path: '/script',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BriefRoute = BriefRouteImport.update({
   id: '/brief',
   path: '/brief',
@@ -26,31 +32,42 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/brief': typeof BriefRoute
+  '/script': typeof ScriptRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/brief': typeof BriefRoute
+  '/script': typeof ScriptRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/brief': typeof BriefRoute
+  '/script': typeof ScriptRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/brief'
+  fullPaths: '/' | '/brief' | '/script'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/brief'
-  id: '__root__' | '/' | '/brief'
+  to: '/' | '/brief' | '/script'
+  id: '__root__' | '/' | '/brief' | '/script'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BriefRoute: typeof BriefRoute
+  ScriptRoute: typeof ScriptRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/script': {
+      id: '/script'
+      path: '/script'
+      fullPath: '/script'
+      preLoaderRoute: typeof ScriptRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/brief': {
       id: '/brief'
       path: '/brief'
@@ -71,6 +88,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BriefRoute: BriefRoute,
+  ScriptRoute: ScriptRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
