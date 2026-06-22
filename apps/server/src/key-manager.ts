@@ -97,8 +97,16 @@ export function getAllKeys(provider: Provider): string[] {
   return getProviderTokens(provider);
 }
 
-export function getCloudflareAccountId(): string {
-  return loadKeys().cloudflare.accountId;
+export function getCloudflareConfig(): { accountId: string; token: string | null } {
+  const cf = loadKeys().cloudflare;
+  const tokens = cf.tokens ?? [];
+  if (tokens.length === 0) return { accountId: cf.accountId, token: null };
+
+  const idx = rotationIndex.cloudflare % tokens.length;
+  rotationIndex.cloudflare = idx + 1;
+
+  const token = tokens[idx];
+  return { accountId: cf.accountId, token: token || null };
 }
 
 export function markUsed(provider: Provider, keyIndex: number): void {

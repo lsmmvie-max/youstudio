@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import fs from "fs";
 import path from "path";
-import { getKey, markUsed, markExhausted, getAllKeys, getDailyUsage, getCloudflareAccountId } from "./key-manager.js";
+import { getKey, markUsed, markExhausted, getAllKeys, getDailyUsage, getCloudflareConfig } from "./key-manager.js";
 
 const router = Router();
 
@@ -28,15 +28,14 @@ function ensureDateDir(): string {
   return dir;
 }
 
-async function callCloudflare(body: ImageRequest, apiKey: string): Promise<{ url: string }> {
-  const accountId = getCloudflareAccountId();
+async function callCloudflare(body: ImageRequest, accountId: string, token: string): Promise<{ url: string }> {
   const url = `${CLOUDFLARE_URL}/${accountId}/ai/run/@cf/black-forest-labs/flux-1-schnell`;
 
   const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
       prompt: body.prompt,
@@ -211,11 +210,25 @@ router.post("/generate", async (req: Request, res: Response) => {
   }
 
   // Fallback chain: Cloudflare → fal.ai → Gemini → Stability AI
-  const result =
-    (await tryProvider("cloudflare", callCloudflare, body)) ??
-    (await tryProvider("fal", callFal, body)) ??
-    (await tryProvider("gemini", callGemini, body)) ??
-    (await tryProvider("stability", callStability, body));
+  let result: { provider: string; url: string } | null = null;
+
+  const cf = getCloudflareConfig();
+  if (cf.accountId && cf.token) {
+    try {
+      const r = await callCloudflare(body, cf.accountId, cf.token);
+      console.log("[image] cloudflare succeeded");
+      result = { provider: "cloudflare", ...r };
+    } catch (err) {
+      console.error("[image] cloudflare failed:", (err as Error).message);
+    }
+  }
+
+  if (!result) {
+    result =
+      (await tryProvider("fal", callFal, body)) ??
+      (await tryProvider("gemini", callGemini, body)) ??
+      (await tryProvider("stability", callStability, body));
+  }
 
   if (result) {
     res.json(result);
