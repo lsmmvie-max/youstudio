@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as VoiceRouteImport } from './routes/voice'
 import { Route as ScriptRouteImport } from './routes/script'
+import { Route as ForgeRouteImport } from './routes/forge'
 import { Route as BriefRouteImport } from './routes/brief'
 import { Route as IndexRouteImport } from './routes/index'
 
@@ -22,6 +23,11 @@ const VoiceRoute = VoiceRouteImport.update({
 const ScriptRoute = ScriptRouteImport.update({
   id: '/script',
   path: '/script',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ForgeRoute = ForgeRouteImport.update({
+  id: '/forge',
+  path: '/forge',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BriefRoute = BriefRouteImport.update({
@@ -38,12 +44,14 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/brief': typeof BriefRoute
+  '/forge': typeof ForgeRoute
   '/script': typeof ScriptRoute
   '/voice': typeof VoiceRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/brief': typeof BriefRoute
+  '/forge': typeof ForgeRoute
   '/script': typeof ScriptRoute
   '/voice': typeof VoiceRoute
 }
@@ -51,20 +59,22 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/brief': typeof BriefRoute
+  '/forge': typeof ForgeRoute
   '/script': typeof ScriptRoute
   '/voice': typeof VoiceRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/brief' | '/script' | '/voice'
+  fullPaths: '/' | '/brief' | '/forge' | '/script' | '/voice'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/brief' | '/script' | '/voice'
-  id: '__root__' | '/' | '/brief' | '/script' | '/voice'
+  to: '/' | '/brief' | '/forge' | '/script' | '/voice'
+  id: '__root__' | '/' | '/brief' | '/forge' | '/script' | '/voice'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BriefRoute: typeof BriefRoute
+  ForgeRoute: typeof ForgeRoute
   ScriptRoute: typeof ScriptRoute
   VoiceRoute: typeof VoiceRoute
 }
@@ -83,6 +93,13 @@ declare module '@tanstack/react-router' {
       path: '/script'
       fullPath: '/script'
       preLoaderRoute: typeof ScriptRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/forge': {
+      id: '/forge'
+      path: '/forge'
+      fullPath: '/forge'
+      preLoaderRoute: typeof ForgeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/brief': {
@@ -105,6 +122,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BriefRoute: BriefRoute,
+  ForgeRoute: ForgeRoute,
   ScriptRoute: ScriptRoute,
   VoiceRoute: VoiceRoute,
 }
