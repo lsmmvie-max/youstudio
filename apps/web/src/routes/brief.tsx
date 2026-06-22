@@ -5,21 +5,44 @@ import { ScrollArea } from '#/components/ui/scroll-area.tsx'
 
 export const Route = createFileRoute('/brief')({ component: MorningBrief })
 
+interface EditingBlock {
+  timestamp: string
+  narration: string
+  style: 'LIGHT' | 'INTENSE'
+  characterVariant: string
+  background: string
+}
+
+interface ImagePrompt {
+  scene: number
+  prompt: string
+  filename: string
+  status: 'pending' | 'generated'
+}
+
 interface Manifest {
   date: string
   title: string
   concept: string
   estimatedDuration: number
-  script: string
-  images: { filename: string; prompt: string; status: 'pending' | 'generated' }[]
+  wordCount: number
+  readingScript: string
+  editingScript: EditingBlock[]
+  imagePrompts: ImagePrompt[]
+  imagesGenerated: number
+  imagesTotal: number
+  generatedAt: string
 }
 
 function MorningBrief() {
   const [manifest, setManifest] = useState<Manifest | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [running, setRunning] = useState(false)
 
-  useEffect(() => {
+  const fetchToday = () => {
+    setLoading(true)
+    setError(false)
     fetch('http://localhost:3737/brief/today')
       .then((res) => {
         if (!res.ok) throw new Error()
@@ -28,7 +51,24 @@ function MorningBrief() {
       .then(setManifest)
       .catch(() => setError(true))
       .finally(() => setLoading(false))
-  }, [])
+  }
+
+  useEffect(() => { fetchToday() }, [])
+
+  const handleRunBrain = () => {
+    setRunning(true)
+    fetch('http://localhost:3737/brief/run', { method: 'POST' })
+      .then((res) => {
+        if (!res.ok) throw new Error()
+        return res.json() as Promise<Manifest>
+      })
+      .then((m) => {
+        setManifest(m)
+        setError(false)
+      })
+      .catch(() => setError(true))
+      .finally(() => setRunning(false))
+  }
 
   return (
     <div className="flex h-dvh flex-col bg-background">
@@ -45,13 +85,14 @@ function MorningBrief() {
 
       <ScrollArea className="flex-1">
         <div className="mx-auto max-w-2xl px-6 py-10">
-          {loading && (
+          {loading && !running && (
             <div className="flex items-center justify-center py-20">
               <span className="text-sm text-muted-foreground">Loading...</span>
             </div>
           )}
-          {!loading && (error || !manifest) && <EmptyState />}
-          {!loading && manifest && <BriefContent manifest={manifest} />}
+          {running && <RunningState />}
+          {!loading && !running && (error || !manifest) && <EmptyState onRun={handleRunBrain} />}
+          {!loading && !running && manifest && <BriefContent manifest={manifest} />}
         </div>
       </ScrollArea>
     </div>
@@ -59,8 +100,6 @@ function MorningBrief() {
 }
 
 function BriefContent({ manifest }: { manifest: Manifest }) {
-  const wordCount = manifest.script.split(/\s+/).filter(Boolean).length
-
   return (
     <div className="flex flex-col gap-8">
       <div>
@@ -74,15 +113,37 @@ function BriefContent({ manifest }: { manifest: Manifest }) {
       </div>
 
       <div className="grid grid-cols-3 gap-4">
-        <Stat label="Duration" value={`${manifest.estimatedDuration}m`} />
-        <Stat label="Script" value={`${wordCount} words`} />
-        <Stat label="Images" value={`${manifest.images.length} planned`} />
+        <Stat label="Duration" value={`~${manifest.estimatedDuration}m`} />
+        <Stat label="Script" value={`${manifest.wordCount} words`} />
+        <Stat label="Images" value={`${manifest.imagesGenerated}/${manifest.imagesTotal}`} />
+      </div>
+
+      <div>
+        <p className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">Editing Blocks</p>
+        <div className="flex flex-col gap-2">
+          {manifest.editingScript.map((block, i) => (
+            <div
+              key={i}
+              className={`rounded-md border p-3 ${block.style === 'INTENSE' ? 'border-primary/40 bg-primary/5' : 'border-border bg-muted/30'}`}
+            >
+              <div className="mb-1 flex items-center gap-2">
+                <span className="text-[10px] font-mono text-muted-foreground">{block.timestamp}</span>
+                <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${block.style === 'INTENSE' ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                  {block.style}
+                </span>
+                <span className="text-[10px] text-muted-foreground">{block.characterVariant}</span>
+              </div>
+              <p className="text-xs leading-relaxed text-foreground/80">{block.narration.slice(0, 120)}...</p>
+              <p className="mt-1 text-[10px] text-muted-foreground">BG: {block.background}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div>
         <p className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">Image Storyboard</p>
         <div className="grid grid-cols-3 gap-3">
-          {manifest.images.map((img, i) => (
+          {manifest.imagePrompts.map((img, i) => (
             <div
               key={i}
               className="flex aspect-video flex-col items-center justify-center rounded-md border border-border bg-muted/50"
@@ -96,7 +157,7 @@ function BriefContent({ manifest }: { manifest: Manifest }) {
               ) : (
                 <>
                   <div className="mb-1 size-6 rounded bg-muted-foreground/20" />
-                  <span className="px-2 text-center text-[9px] leading-tight text-muted-foreground">{img.prompt}</span>
+                  <span className="px-2 text-center text-[9px] leading-tight text-muted-foreground">{img.prompt.slice(0, 60)}...</span>
                 </>
               )}
             </div>
@@ -120,7 +181,38 @@ function Stat({ label, value }: { label: string; value: string }) {
   )
 }
 
-function EmptyState() {
+function RunningState() {
+  return (
+    <div className="flex flex-col items-center gap-6 py-20 text-center">
+      <div className="flex size-16 items-center justify-center rounded-full bg-primary/10">
+        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="animate-spin text-primary"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+      </div>
+      <div>
+        <h2 className="mb-2 text-xl font-semibold text-foreground">Overnight Brain is running...</h2>
+        <p className="mx-auto max-w-sm text-sm leading-relaxed text-muted-foreground">
+          Generating story concept, writing script, and creating image prompts.
+          This usually takes 1-2 minutes.
+        </p>
+      </div>
+      <div className="flex flex-col gap-2 text-xs text-muted-foreground">
+        <Step label="Picking story concept" />
+        <Step label="Writing reading script (~2000 words)" />
+        <Step label="Creating editing blocks & image prompts" />
+      </div>
+    </div>
+  )
+}
+
+function Step({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className="size-1.5 rounded-full bg-muted-foreground/40" />
+      <span>{label}</span>
+    </div>
+  )
+}
+
+function EmptyState({ onRun }: { onRun: () => void }) {
   return (
     <div className="flex flex-col items-center gap-6 py-20 text-center">
       <div className="flex size-16 items-center justify-center rounded-full bg-muted">
@@ -133,7 +225,7 @@ function EmptyState() {
           generates image prompts, and prepares everything so you can review and record in the morning.
         </p>
       </div>
-      <Button size="lg" className="bg-primary text-primary-foreground hover:bg-primary/90">
+      <Button size="lg" className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={onRun}>
         Run Overnight Brain Now
       </Button>
     </div>

@@ -6,6 +6,7 @@ import aiRouter from "./ai-router.js";
 import imageRouter from "./image-router.js";
 import { startMcpServer } from "./mcp-server.js";
 import { getDailyUsage, type Provider } from "./key-manager.js";
+import { runOvernightBrain } from "./overnight-brain.js";
 
 const QUEUE_DIR = "C:\\YouStudio\\queue";
 
@@ -52,6 +53,18 @@ app.get("/brief/today", (_req, res) => {
 });
 
 app.use("/brief/image", express.static(QUEUE_DIR));
+
+app.post("/brief/run", async (_req, res) => {
+  try {
+    const manifest = await runOvernightBrain((step, detail) => {
+      console.log(`[POST /brief/run] ${step}: ${detail}`);
+    });
+    res.json(manifest);
+  } catch (err) {
+    console.error("[POST /brief/run] Failed:", err);
+    res.status(500).json({ error: "Overnight Brain pipeline failed" });
+  }
+});
 
 app.get("/usage", (_req, res) => {
   const providers: Provider[] = ["openrouter", "fal", "stability", "youtube"];
