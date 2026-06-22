@@ -1,15 +1,16 @@
 import { Router, type Request, type Response } from "express";
 import fs from "fs";
 import path from "path";
-import { getKey, markUsed, markExhausted, getAllKeys, getDailyUsage } from "./key-manager.js";
+import { getKey, markUsed, markExhausted, getAllKeys, getDailyUsage, getCloudflareAccountId } from "./key-manager.js";
 
 const router = Router();
 
+const CLOUDFLARE_URL = "https://api.cloudflare.com/client/v4/accounts";
 const ZENMUX_URL = "https://zenmux.ai/api/v1/images/generations";
 const GEMINI_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent";
 const FAL_URL = "https://fal.run/fal-ai/flux/dev";
-const STABILITY_URL = "https://api.stability.ai/v2beta/stable-image/generate/sd3";
+const STABILITY_URL = "https://api.stability.ai/v2beta/stable-image/generate/core";
 const ASSETS_DIR = "C:\\YouStudio\\assets";
 
 interface ImageRequest {
@@ -25,6 +26,35 @@ function ensureDateDir(): string {
   const dir = path.join(ASSETS_DIR, date);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   return dir;
+}
+
+async function callCloudflare(body: ImageRequest, apiKey: string): Promise<{ url: string }> {
+  const accountId = getCloudflareAccountId();
+  const url = `${CLOUDFLARE_URL}/${accountId}/ai/run/@cf/black-forest-labs/flux-1-schnell`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      prompt: body.prompt,
+      num_steps: 4,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Cloudflare returned ${response.status}`);
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const dir = ensureDateDir();
+  const filename = `gen_${Date.now()}.jpg`;
+  const outPath = path.join(dir, filename);
+  fs.writeFileSync(outPath, buffer);
+
+  return { url: outPath };
 }
 
 async function callZenMux(body: ImageRequest, apiKey: string): Promise<{ url: string }> {
@@ -125,16 +155,13 @@ async function callStability(body: ImageRequest, apiKey: string): Promise<{ url:
   const formData = new FormData();
   formData.append("prompt", body.prompt);
   if (body.negative_prompt) formData.append("negative_prompt", body.negative_prompt);
-  formData.append("output_format", "png");
-  formData.append("width", String(body.width ?? 1024));
-  formData.append("height", String(body.height ?? 1024));
-  formData.append("steps", String(body.steps ?? 28));
+  formData.append("output_format", "jpeg");
 
   const response = await fetch(STABILITY_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
-      Accept: "application/json",
+      Accept: "image/*",
     },
     body: formData,
   });
@@ -143,19 +170,17 @@ async function callStability(body: ImageRequest, apiKey: string): Promise<{ url:
     throw new Error(`Stability AI returned ${response.status}`);
   }
 
-  const data = (await response.json()) as { image?: string };
-  if (!data.image) throw new Error("No image data in Stability response");
-
+  const buffer = Buffer.from(await response.arrayBuffer());
   const dir = ensureDateDir();
-  const filename = `gen_${Date.now()}.png`;
+  const filename = `gen_${Date.now()}.jpg`;
   const outPath = path.join(dir, filename);
-  fs.writeFileSync(outPath, Buffer.from(data.image, "base64"));
+  fs.writeFileSync(outPath, buffer);
 
   return { url: outPath };
 }
 
 async function tryProvider(
-  provider: "gemini" | "fal" | "stability",
+  provider: string,
   callFn: (body: ImageRequest, key: string) => Promise<{ url: string }>,
   body: ImageRequest,
 ): Promise<{ provider: string; url: string } | null> {
@@ -185,9 +210,9 @@ router.post("/generate", async (req: Request, res: Response) => {
     return;
   }
 
-  // Fallback chain: ZenMux → fal.ai → Gemini → Stability AI
+  // Fallback chain: Cloudflare → fal.ai → Gemini → Stability AI
   const result =
-    (await tryProvider("zenmux", callZenMux, body)) ??
+    (await tryProvider("cloudflare", callCloudflare, body)) ??
     (await tryProvider("fal", callFal, body)) ??
     (await tryProvider("gemini", callGemini, body)) ??
     (await tryProvider("stability", callStability, body));
@@ -199,13 +224,13 @@ router.post("/generate", async (req: Request, res: Response) => {
 
   res.status(503).json({
     error: "All image providers unavailable",
-    detail: "Gemini, fal.ai, and Stability AI keys exhausted or unreachable",
+    detail: "Cloudflare, fal.ai, Gemini, and Stability AI keys exhausted or unreachable",
   });
 });
 
 router.get("/usage", (_req: Request, res: Response) => {
   res.json({
-    zenmux: getDailyUsage("zenmux"),
+    cloudflare: getDailyUsage("cloudflare"),
     gemini: getDailyUsage("gemini"),
     fal: getDailyUsage("fal"),
     stability: getDailyUsage("stability"),
@@ -213,7 +238,7 @@ router.get("/usage", (_req: Request, res: Response) => {
 });
 
 router.get("/test", (_req: Request, res: Response) => {
-  const providers = ["zenmux", "gemini", "fal", "stability"] as const;
+  const providers = ["cloudflare", "gemini", "fal", "stability"] as const;
   const status = providers.map((p) => {
     const keys = getAllKeys(p);
     const configured = keys.filter((k) => k.length > 0).length;
@@ -230,7 +255,7 @@ router.get("/test", (_req: Request, res: Response) => {
   res.json({
     timestamp: new Date().toISOString(),
     providers: status,
-    fallbackOrder: ["zenmux", "fal", "gemini", "stability"],
+    fallbackOrder: ["cloudflare", "fal", "gemini", "stability"],
   });
 });
 

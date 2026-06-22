@@ -12,6 +12,7 @@ interface KeysFile {
   fal: string[];
   stability: string[];
   zenmux: string[];
+  cloudflare: { accountId: string; tokens: string[] };
   youtube: string[];
   groq: string[];
 }
@@ -25,9 +26,17 @@ const rotationIndex: Record<Provider, number> = {
   fal: 0,
   stability: 0,
   zenmux: 0,
+  cloudflare: 0,
   youtube: 0,
   groq: 0,
 };
+
+function getProviderTokens(provider: Provider): string[] {
+  const val = loadKeys()[provider];
+  if (Array.isArray(val)) return val;
+  if (val && typeof val === "object" && "tokens" in val) return (val as { tokens: string[] }).tokens;
+  return [];
+}
 
 function loadKeys(): KeysFile {
   if (keys) return keys;
@@ -75,8 +84,8 @@ function today(): string {
 }
 
 export function getKey(provider: Provider): { key: string; index: number } | null {
-  const providerKeys = loadKeys()[provider];
-  if (!providerKeys || providerKeys.length === 0) return null;
+  const providerKeys = getProviderTokens(provider);
+  if (providerKeys.length === 0) return null;
 
   const idx = rotationIndex[provider] % providerKeys.length;
   rotationIndex[provider] = idx + 1;
@@ -85,7 +94,11 @@ export function getKey(provider: Provider): { key: string; index: number } | nul
 }
 
 export function getAllKeys(provider: Provider): string[] {
-  return loadKeys()[provider] ?? [];
+  return getProviderTokens(provider);
+}
+
+export function getCloudflareAccountId(): string {
+  return loadKeys().cloudflare.accountId;
 }
 
 export function markUsed(provider: Provider, keyIndex: number): void {
@@ -102,7 +115,7 @@ export function getDailyUsage(provider: Provider): { total: number; perKey: { in
 }
 
 export function markExhausted(provider: Provider, keyIndex: number): void {
-  const providerKeys = loadKeys()[provider];
+  const providerKeys = getProviderTokens(provider);
   if (providerKeys.length <= 1) return;
   if (rotationIndex[provider] % providerKeys.length === keyIndex) {
     rotationIndex[provider]++;
