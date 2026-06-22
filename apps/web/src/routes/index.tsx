@@ -1,10 +1,5 @@
 import { useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import {
-  ResizablePanelGroup,
-  ResizablePanel,
-  ResizableHandle,
-} from '#/components/ui/resizable.tsx'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '#/components/ui/tabs.tsx'
 import { TopBar } from '#/components/editor/top-bar.tsx'
 import { AssetPanel } from '#/components/editor/asset-panel.tsx'
@@ -19,58 +14,47 @@ function Editor() {
   const [rightTab, setRightTab] = useState('properties')
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-background">
+    <div style={{ width: '100%', height: '100dvh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} className="bg-background">
       <TopBar />
 
-      <ResizablePanelGroup orientation="horizontal" className="flex-1">
+      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr 260px', flex: 1, minHeight: 0 }}>
         {/* Left: Asset Browser */}
-        <ResizablePanel defaultSize={18} minSize={12} maxSize={30}>
-          <div className="h-full overflow-hidden">
-            <AssetPanel />
-          </div>
-        </ResizablePanel>
-
-        <ResizableHandle withHandle />
+        <div className="overflow-hidden border-r border-border">
+          <AssetPanel />
+        </div>
 
         {/* Center: Preview + Timeline */}
-        <ResizablePanel defaultSize={62} minSize={40}>
-          <ResizablePanelGroup orientation="vertical">
-            <ResizablePanel defaultSize={62} minSize={30}>
-              <PreviewCanvas />
-            </ResizablePanel>
-            <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={38} minSize={15}>
-              <TimelinePlaceholder />
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        </ResizablePanel>
-
-        <ResizableHandle withHandle />
+        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
+          <div style={{ flex: '1 1 60%', minHeight: 0 }}>
+            <PreviewCanvas />
+          </div>
+          <div style={{ flex: '1 1 40%', minHeight: 0 }}>
+            <TimelinePlaceholder />
+          </div>
+        </div>
 
         {/* Right: Properties / AI Chat */}
-        <ResizablePanel defaultSize={20} minSize={14} maxSize={30}>
-          <div className="h-full overflow-hidden">
-            <Tabs
-              value={rightTab}
-              onValueChange={setRightTab}
-              className="flex h-full flex-col gap-0"
-            >
-              <div className="shrink-0 border-b border-border px-2 pt-2">
-                <TabsList variant="line" className="w-full">
-                  <TabsTrigger value="properties">Properties</TabsTrigger>
-                  <TabsTrigger value="ai">AI Chat</TabsTrigger>
-                </TabsList>
-              </div>
-              <TabsContent value="properties" className="min-h-0 flex-1 overflow-auto">
-                <PropertiesPanel />
-              </TabsContent>
-              <TabsContent value="ai" className="min-h-0 flex-1 overflow-hidden">
-                <AiChat />
-              </TabsContent>
-            </Tabs>
-          </div>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+        <div className="overflow-hidden border-l border-border">
+          <Tabs
+            value={rightTab}
+            onValueChange={setRightTab}
+            className="flex h-full flex-col gap-0 overflow-hidden"
+          >
+            <div className="shrink-0 border-b border-border px-2 pt-2">
+              <TabsList variant="line" className="w-auto">
+                <TabsTrigger value="properties">Properties</TabsTrigger>
+                <TabsTrigger value="ai">AI Chat</TabsTrigger>
+              </TabsList>
+            </div>
+            <TabsContent value="properties" className="min-h-0 flex-1 overflow-auto">
+              <PropertiesPanel />
+            </TabsContent>
+            <TabsContent value="ai" className="min-h-0 flex-1 overflow-hidden">
+              <AiChat />
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
     </div>
   )
 }

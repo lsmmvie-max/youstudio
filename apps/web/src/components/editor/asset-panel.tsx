@@ -4,8 +4,8 @@ import { ScrollArea } from '#/components/ui/scroll-area.tsx'
 
 const FOLDERS = [
   { id: 'assets', label: 'Assets' },
-  { id: 'characters', label: 'Characters' },
-  { id: 'backgrounds', label: 'Backgrounds' },
+  { id: 'characters', label: 'Chars' },
+  { id: 'backgrounds', label: 'BGs' },
 ] as const
 
 type FolderTab = (typeof FOLDERS)[number]['id']
@@ -33,10 +33,10 @@ export function AssetPanel() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <Tabs value={tab} onValueChange={(v) => setTab(v as FolderTab)} className="flex h-full flex-col gap-0 overflow-hidden">
-        <div className="shrink-0 border-b border-border px-1 pt-2">
-          <TabsList variant="line" className="w-full justify-start">
+        <div className="shrink-0 border-b border-border px-2 pt-2">
+          <TabsList variant="line" className="w-auto">
             {FOLDERS.map((f) => (
-              <TabsTrigger key={f.id} value={f.id} className="truncate">
+              <TabsTrigger key={f.id} value={f.id}>
                 {f.label}
               </TabsTrigger>
             ))}
