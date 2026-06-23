@@ -200,11 +200,12 @@ router.get("/background-image/:filename", (req: Request, res: Response) => {
 });
 
 router.post("/generate", async (req: Request, res: Response) => {
-  const { prompt, style, filename, references } = req.body as {
+  const { prompt, style, filename, references, type } = req.body as {
     prompt?: string;
     style?: "LIGHT" | "INTENSE";
     filename?: string;
     references?: string[];
+    type?: "character" | "background" | "asset";
   };
 
   if (!prompt) {
@@ -224,11 +225,25 @@ router.post("/generate", async (req: Request, res: Response) => {
       height: 720,
     });
 
-    const today = getTodayString();
-    const outDir = path.join(ASSETS_DIR, today);
-    fs.mkdirSync(outDir, { recursive: true });
-
     const outName = filename ?? `scene_${Date.now()}.png`;
+    let outDir: string;
+    let urlPath: string;
+
+    if (type === "character") {
+      outDir = path.join(CHARACTERS_DIR, "generated");
+      fs.mkdirSync(outDir, { recursive: true });
+      urlPath = `/forge/character-image/generated/${outName}`;
+    } else if (type === "background") {
+      outDir = BACKGROUNDS_DIR;
+      fs.mkdirSync(outDir, { recursive: true });
+      urlPath = `/forge/background-image/${outName}`;
+    } else {
+      const today = getTodayString();
+      outDir = path.join(ASSETS_DIR, today);
+      fs.mkdirSync(outDir, { recursive: true });
+      urlPath = `/forge/image/${today}/${outName}`;
+    }
+
     const outPath = path.join(outDir, outName);
 
     if (data.url.startsWith("http")) {
@@ -242,14 +257,43 @@ router.post("/generate", async (req: Request, res: Response) => {
 
     res.json({
       provider: data.provider,
-      url: `/forge/image/${today}/${outName}`,
+      url: urlPath,
       localPath: outPath,
       filename: outName,
+      type: type ?? "asset",
     });
   } catch (err) {
     console.error("[Forge] Generate failed:", err);
     res.status(500).json({ error: "Image generation failed" });
   }
+});
+
+router.post("/upload-asset", upload.single("image"), (req: Request, res: Response) => {
+  if (!req.file) { res.status(400).json({ error: "image is required" }); return; }
+  const today = getTodayString();
+  const outDir = path.join(ASSETS_DIR, today);
+  fs.mkdirSync(outDir, { recursive: true });
+  const outPath = path.join(outDir, req.file.originalname);
+  fs.writeFileSync(outPath, req.file.buffer);
+  res.json({ ok: true, filename: req.file.originalname, url: `/forge/image/${today}/${req.file.originalname}` });
+});
+
+router.post("/upload-character", upload.single("image"), (req: Request, res: Response) => {
+  if (!req.file) { res.status(400).json({ error: "image is required" }); return; }
+  const charName = String(req.body?.name ?? "").trim() || "uploaded";
+  const charDir = path.join(CHARACTERS_DIR, charName);
+  fs.mkdirSync(charDir, { recursive: true });
+  const outPath = path.join(charDir, req.file.originalname);
+  fs.writeFileSync(outPath, req.file.buffer);
+  res.json({ ok: true, filename: req.file.originalname, url: `/forge/character-image/${charName}/${req.file.originalname}` });
+});
+
+router.post("/upload-background", upload.single("image"), (req: Request, res: Response) => {
+  if (!req.file) { res.status(400).json({ error: "image is required" }); return; }
+  fs.mkdirSync(BACKGROUNDS_DIR, { recursive: true });
+  const outPath = path.join(BACKGROUNDS_DIR, req.file.originalname);
+  fs.writeFileSync(outPath, req.file.buffer);
+  res.json({ ok: true, filename: req.file.originalname, url: `/forge/background-image/${req.file.originalname}` });
 });
 
 export default router;

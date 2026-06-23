@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '#/components/ui/tabs.tsx'
+import { Button } from '#/components/ui/button.tsx'
 
 const API = 'http://localhost:3737'
 
@@ -35,8 +36,11 @@ export function AssetPanel() {
   const [assets, setAssets] = useState<Asset[]>([])
   const [characters, setCharacters] = useState<Character[]>([])
   const [backgrounds, setBackgrounds] = useState<BgFile[]>([])
+  const assetInputRef = useRef<HTMLInputElement>(null)
+  const charInputRef = useRef<HTMLInputElement>(null)
+  const bgInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
+  const fetchAll = () => {
     fetch(`${API}/forge/assets`)
       .then((r) => r.json() as Promise<{ assets: Asset[] }>)
       .then((d) => setAssets(d.assets))
@@ -49,7 +53,17 @@ export function AssetPanel() {
       .then((r) => r.json() as Promise<{ backgrounds: BgFile[] }>)
       .then((d) => setBackgrounds(d.backgrounds))
       .catch(() => {})
-  }, [])
+  }
+
+  useEffect(() => { fetchAll() }, [])
+
+  const uploadFile = async (endpoint: string, file: File, extra?: Record<string, string>) => {
+    const form = new FormData()
+    form.append('image', file)
+    if (extra) Object.entries(extra).forEach(([k, v]) => form.append(k, v))
+    await fetch(`${API}/forge/${endpoint}`, { method: 'POST', body: form })
+    fetchAll()
+  }
 
   const filteredAssets = search
     ? assets.filter((a) => a.filename.toLowerCase().includes(search.toLowerCase()))
@@ -90,6 +104,14 @@ export function AssetPanel() {
               {f.id === 'backgrounds' && <BgsGrid backgrounds={filteredBgs} />}
             </TabsContent>
           ))}
+        </div>
+        <div className="shrink-0 border-t border-border p-2">
+          <input ref={assetInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile('upload-asset', f); e.target.value = '' }} />
+          <input ref={charInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) { const name = window.prompt('Character name:') || 'uploaded'; uploadFile('upload-character', f, { name }) } e.target.value = '' }} />
+          <input ref={bgInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile('upload-background', f); e.target.value = '' }} />
+          {tab === 'assets' && <Button size="sm" variant="outline" className="w-full text-[10px]" onClick={() => assetInputRef.current?.click()}>Upload Asset</Button>}
+          {tab === 'characters' && <Button size="sm" variant="outline" className="w-full text-[10px]" onClick={() => charInputRef.current?.click()}>Upload Character</Button>}
+          {tab === 'backgrounds' && <Button size="sm" variant="outline" className="w-full text-[10px]" onClick={() => bgInputRef.current?.click()}>Upload Background</Button>}
         </div>
       </Tabs>
     </div>

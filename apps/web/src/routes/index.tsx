@@ -4,9 +4,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '#/components/ui/tabs.t
 import { TopBar } from '#/components/editor/top-bar.tsx'
 import { AssetPanel } from '#/components/editor/asset-panel.tsx'
 import { PreviewCanvas } from '#/components/editor/preview-canvas.tsx'
-import { TimelinePlaceholder } from '#/components/editor/timeline-placeholder.tsx'
+import { Timeline } from '#/components/editor/timeline.tsx'
 import { PropertiesPanel } from '#/components/editor/properties-panel.tsx'
 import { AiChat } from '#/components/editor/ai-chat.tsx'
+import { TimelineProvider } from '#/components/editor/timeline-context.tsx'
 
 export const Route = createFileRoute('/')({ component: Editor })
 
@@ -14,47 +15,49 @@ function Editor() {
   const [rightTab, setRightTab] = useState('properties')
 
   return (
-    <div style={{ width: '100%', height: '100dvh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} className="bg-background">
-      <TopBar />
+    <TimelineProvider>
+      <div style={{ width: '100%', height: '100dvh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} className="bg-background">
+        <TopBar />
 
-      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr 260px', flex: 1, minHeight: 0 }}>
-        {/* Left: Asset Browser */}
-        <div className="overflow-hidden border-r border-border">
-          <AssetPanel />
-        </div>
-
-        {/* Center: Preview + Timeline */}
-        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
-          <div style={{ flex: '1 1 60%', minHeight: 0 }}>
-            <PreviewCanvas />
+        <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr 260px', flex: 1, minHeight: 0 }}>
+          {/* Left: Asset Browser */}
+          <div className="overflow-hidden border-r border-border">
+            <AssetPanel />
           </div>
-          <div style={{ flex: '1 1 40%', minHeight: 0 }}>
-            <TimelinePlaceholder />
-          </div>
-        </div>
 
-        {/* Right: Properties / AI Chat */}
-        <div className="overflow-hidden border-l border-border">
-          <Tabs
-            value={rightTab}
-            onValueChange={setRightTab}
-            className="flex h-full flex-col gap-0 overflow-hidden"
-          >
-            <div className="shrink-0 border-b border-border px-2 pt-2">
-              <TabsList variant="line" className="w-auto">
-                <TabsTrigger value="properties">Properties</TabsTrigger>
-                <TabsTrigger value="ai">AI Chat</TabsTrigger>
-              </TabsList>
+          {/* Center: Preview + Timeline */}
+          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
+            <div style={{ flex: '1 1 60%', minHeight: 0 }}>
+              <PreviewCanvas />
             </div>
-            <TabsContent value="properties" className="min-h-0 flex-1 overflow-auto">
-              <PropertiesPanel />
-            </TabsContent>
-            <TabsContent value="ai" className="min-h-0 flex-1 overflow-hidden [&>div]:h-full">
-              <AiChat />
-            </TabsContent>
-          </Tabs>
+            <div style={{ flex: '1 1 40%', minHeight: 0 }}>
+              <Timeline />
+            </div>
+          </div>
+
+          {/* Right: Properties / AI Chat */}
+          <div className="overflow-hidden border-l border-border">
+            <Tabs
+              value={rightTab}
+              onValueChange={setRightTab}
+              className="flex h-full flex-col gap-0 overflow-hidden"
+            >
+              <div className="shrink-0 border-b border-border px-2 pt-2">
+                <TabsList variant="line" className="w-auto">
+                  <TabsTrigger value="properties">Properties</TabsTrigger>
+                  <TabsTrigger value="ai">AI Chat</TabsTrigger>
+                </TabsList>
+              </div>
+              <TabsContent value="properties" className="min-h-0 flex-1 overflow-auto">
+                <PropertiesPanel />
+              </TabsContent>
+              <TabsContent value="ai" className="min-h-0 flex-1 overflow-hidden [&>div]:h-full">
+                <AiChat />
+              </TabsContent>
+            </Tabs>
+          </div>
         </div>
       </div>
-    </div>
+    </TimelineProvider>
   )
 }

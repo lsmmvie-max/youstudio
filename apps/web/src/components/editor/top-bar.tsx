@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { Button } from '#/components/ui/button.tsx'
 
 export function TopBar() {
+  const navigate = useNavigate()
   const [name, setName] = useState(() => localStorage.getItem('youstudio-project-name') || 'Untitled Project')
   const [editing, setEditing] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -66,7 +67,7 @@ export function TopBar() {
         <Link to="/settings" className="inline-flex h-8 items-center rounded-md px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
           Settings
         </Link>
-        <Button size="sm">Export</Button>
+        <Button size="sm" onClick={() => navigate({ to: '/packaging' })}>Export</Button>
       </div>
     </div>
   )

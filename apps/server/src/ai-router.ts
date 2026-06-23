@@ -189,6 +189,97 @@ router.post("/chat", async (req: Request, res: Response) => {
   }
 });
 
+router.post("/timeline-command", async (req: Request, res: Response) => {
+  const { message, timelineState } = req.body as {
+    message: string;
+    timelineState: { clips: { id: string; name: string; startTime: number; duration: number; track: number }[] };
+  };
+
+  if (!message) {
+    res.status(400).json({ error: "message is required" });
+    return;
+  }
+
+  const systemPrompt = `You are a timeline editing assistant. The user has a video timeline with these clips:
+${JSON.stringify(timelineState?.clips ?? [], null, 2)}
+
+The user will give you a natural language instruction. Respond with ONLY a JSON object (no markdown, no explanation) with this structure:
+{ "command": "<command>", "params": { ... }, "description": "<what you did>" }
+
+Available commands:
+- "add_clip": params: { src: string, name: string, startTime: number, duration: number, track: number }
+- "remove_clip": params: { id: string }
+- "move_clip": params: { id: string, startTime: number }
+- "trim_clip": params: { id: string, duration: number }
+- "clear_timeline": params: {}
+- "none": params: {} (when the request is not a timeline action, just answer in description)
+
+Always respond with valid JSON only.`;
+
+  const chatBody: ChatRequest = {
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: message },
+    ],
+    temperature: 0.3,
+    max_tokens: 512,
+  };
+
+  const keyCount = getAllKeys("openrouter").length;
+  for (let attempt = 0; attempt < keyCount; attempt++) {
+    const entry = getKey("openrouter");
+    if (!entry || !entry.key) continue;
+    try {
+      const response = await callOpenRouter(chatBody, entry.key);
+      if (!response.ok) { markExhausted("openrouter", entry.index); continue; }
+      markUsed("openrouter", entry.index);
+      const data = await response.json() as { choices?: { message?: { content?: string } }[] };
+      const raw = data.choices?.[0]?.message?.content ?? "{}";
+      try {
+        const parsed = JSON.parse(raw.replace(/```json?\n?/g, "").replace(/```/g, "").trim());
+        res.json(parsed);
+      } catch {
+        res.json({ command: "none", params: {}, description: raw });
+      }
+      return;
+    } catch { markExhausted("openrouter", entry.index); continue; }
+  }
+
+  const groqKeyCount = getAllKeys("groq").length;
+  for (let attempt = 0; attempt < groqKeyCount; attempt++) {
+    const entry = getKey("groq");
+    if (!entry || !entry.key) continue;
+    try {
+      const groqRes = await callGroq(chatBody, entry.key);
+      if (!groqRes.ok) { markExhausted("groq", entry.index); continue; }
+      markUsed("groq", entry.index);
+      const data = await groqRes.json() as { choices?: { message?: { content?: string } }[] };
+      const raw = data.choices?.[0]?.message?.content ?? "{}";
+      try {
+        const parsed = JSON.parse(raw.replace(/```json?\n?/g, "").replace(/```/g, "").trim());
+        res.json(parsed);
+      } catch {
+        res.json({ command: "none", params: {}, description: raw });
+      }
+      return;
+    } catch { markExhausted("groq", entry.index); continue; }
+  }
+
+  try {
+    const ollamaRes = await callOllama(chatBody);
+    const data = await ollamaRes.json() as { message?: { content?: string } };
+    const raw = data.message?.content ?? "{}";
+    try {
+      const parsed = JSON.parse(raw.replace(/```json?\n?/g, "").replace(/```/g, "").trim());
+      res.json(parsed);
+    } catch {
+      res.json({ command: "none", params: {}, description: raw });
+    }
+  } catch {
+    res.status(503).json({ error: "All AI providers unavailable" });
+  }
+});
+
 router.get("/usage", (_req: Request, res: Response) => {
   res.json(getDailyUsage("openrouter"));
 });

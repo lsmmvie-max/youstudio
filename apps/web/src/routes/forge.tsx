@@ -24,11 +24,14 @@ interface Asset {
   createdAt: string
 }
 
+type AssetType = 'asset' | 'character' | 'background'
+
 interface QueueItem {
   scene: number
   prompt: string
   filename: string
   style: 'LIGHT' | 'INTENSE'
+  type: AssetType
   status: 'pending' | 'generating' | 'done' | 'error'
   resultUrl?: string
 }
@@ -38,6 +41,7 @@ function AssetForge() {
   const [assets, setAssets] = useState<Asset[]>([])
   const [prompt, setPrompt] = useState('')
   const [style, setStyle] = useState<'LIGHT' | 'INTENSE'>('LIGHT')
+  const [assetType, setAssetType] = useState<AssetType>('asset')
   const [generating, setGenerating] = useState(false)
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null)
   const [queue, setQueue] = useState<QueueItem[]>([])
@@ -128,7 +132,7 @@ function AssetForge() {
       const res = await fetch(`${API}/forge/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: prompt.trim(), style, references: references.map((r) => r.filename) }),
+        body: JSON.stringify({ prompt: prompt.trim(), style, type: assetType, references: references.map((r) => r.filename) }),
       })
       if (!res.ok) throw new Error()
       const data = (await res.json()) as { url: string }
@@ -166,6 +170,7 @@ function AssetForge() {
           prompt: ip.prompt ?? '',
           filename: ip.filename ?? `scene_${String(i + 1).padStart(3, '0')}.png`,
           style: manifest.editingScript?.[i]?.style ?? 'LIGHT',
+          type: 'asset' as AssetType,
           status: 'pending',
         }))
       )
@@ -191,6 +196,7 @@ function AssetForge() {
           body: JSON.stringify({
             prompt: queue[i].prompt,
             style: queue[i].style,
+            type: queue[i].type,
             filename: queue[i].filename,
           }),
         })
@@ -318,7 +324,22 @@ function AssetForge() {
           {/* Scene Generator (top ~40%) */}
           <div className="flex shrink-0 flex-col border-b border-border p-4" style={{ height: '40%' }}>
             <div className="mb-2 flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Scene Generator</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Asset Generator</span>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
+                  {(['asset', 'character', 'background'] as const).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setAssetType(t)}
+                      className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase transition-colors ${
+                        assetType === t ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
                 <button
                   onClick={() => setStyle('LIGHT')}
@@ -428,6 +449,19 @@ function AssetForge() {
                         >
                           {item.style}
                         </span>
+                        <select
+                          value={item.type}
+                          onChange={(e) => {
+                            const val = e.target.value as AssetType
+                            setQueue((q) => q.map((it, idx) => idx === i ? { ...it, type: val } : it))
+                          }}
+                          disabled={item.status === 'generating' || item.status === 'done'}
+                          className="rounded border border-border bg-background px-1 py-0.5 text-[8px] font-bold uppercase text-muted-foreground"
+                        >
+                          <option value="asset">Asset</option>
+                          <option value="character">Character</option>
+                          <option value="background">Background</option>
+                        </select>
                         <StatusBadge status={item.status} />
                       </div>
                       <p className="text-[11px] leading-snug text-foreground/70">{item.prompt.slice(0, 120)}...</p>
