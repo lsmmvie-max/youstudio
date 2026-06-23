@@ -10,9 +10,26 @@ export interface Keyframe {
   rotation: number
 }
 
+export interface ColorGrading {
+  brightness: number
+  contrast: number
+  saturation: number
+  hue: number
+  temperature: number
+  highlights: number
+  shadows: number
+}
+
+export interface AudioEffects {
+  volume: number
+  fadeIn: number
+  fadeOut: number
+  speed: number
+}
+
 export interface TimelineClip {
   id: string
-  type: 'image' | 'audio' | 'caption'
+  type: 'image' | 'audio' | 'caption' | 'video' | 'text'
   src: string
   name: string
   text?: string
@@ -28,6 +45,24 @@ export interface TimelineClip {
   opacity: number
   volume?: number
   keyframes?: Keyframe[]
+  thumbnailUrl?: string
+  fontSize?: number
+  fontFamily?: string
+  fontColor?: string
+  textAlign?: 'left' | 'center' | 'right'
+  bold?: boolean
+  italic?: boolean
+  textAnimation?: 'none' | 'fade-in' | 'typewriter' | 'slide-up' | 'slide-down' | 'pop'
+  colorGrading?: ColorGrading
+  audioEffects?: AudioEffects
+  speed?: number
+}
+
+export interface Transition {
+  fromClipId: string
+  toClipId: string
+  type: 'fade' | 'dissolve' | 'wipe-left' | 'wipe-right' | 'zoom'
+  duration: number
 }
 
 export const TRACK_META = [
@@ -43,6 +78,7 @@ const MAX_HISTORY = 50
 
 interface TimelineContextValue {
   clips: TimelineClip[]
+  transitions: Transition[]
   playheadTime: number
   selectedClipId: string | null
   isPlaying: boolean
@@ -66,6 +102,11 @@ interface TimelineContextValue {
   redo: () => void
   updateClipKeyframe: (clipId: string, kf: Keyframe) => void
   removeClipKeyframe: (clipId: string, time: number) => void
+  addTransition: (fromClipId: string, toClipId: string, type: Transition['type'], duration: number) => void
+  removeTransition: (fromClipId: string, toClipId: string) => void
+  splitClip: (clipId: string, splitTime: number) => void
+  rippleDelete: (clipId: string) => void
+  loadProject: (data: { clips: TimelineClip[]; transitions: Transition[] }) => void
 }
 
 const TimelineContext = createContext<TimelineContextValue | null>(null)
@@ -129,8 +170,18 @@ function loadClips(): TimelineClip[] {
   } catch { return [] }
 }
 
+function loadTransitions(): Transition[] {
+  try {
+    const saved = localStorage.getItem('youstudio-timeline-transitions')
+    if (!saved) return []
+    const parsed = JSON.parse(saved) as Transition[]
+    return Array.isArray(parsed) ? parsed : []
+  } catch { return [] }
+}
+
 export function TimelineProvider({ children }: { children: ReactNode }) {
   const [clips, setClips] = useState<TimelineClip[]>(loadClips)
+  const [transitions, setTransitions] = useState<Transition[]>(loadTransitions)
   const [playheadTime, setPlayheadTime] = useState(() => {
     const saved = localStorage.getItem('youstudio-playhead')
     return saved ? Number(saved) || 0 : 0
@@ -146,7 +197,9 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   // --- Undo/redo history ---
   const clipsRef = useRef(clips)
   clipsRef.current = clips
-  const historyStackRef = useRef<TimelineClip[][]>([])
+  const transitionsRef = useRef(transitions)
+  transitionsRef.current = transitions
+  const historyStackRef = useRef<{ clips: TimelineClip[]; transitions: Transition[] }[]>([])
   const historyIndexRef = useRef(-1)
   const [historyVersion, setHistoryVersion] = useState(0)
 
@@ -156,9 +209,8 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   const pushHistory = useCallback(() => {
     const stack = historyStackRef.current
     const idx = historyIndexRef.current
-    // truncate any forward history
     historyStackRef.current = stack.slice(0, idx + 1)
-    historyStackRef.current.push(clipsRef.current)
+    historyStackRef.current.push({ clips: clipsRef.current, transitions: transitionsRef.current })
     if (historyStackRef.current.length > MAX_HISTORY) {
       historyStackRef.current.shift()
     }
@@ -169,7 +221,8 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     if (historyIndexRef.current < 0) return
     const snapshot = historyStackRef.current[historyIndexRef.current]
     historyIndexRef.current--
-    setClips(snapshot)
+    setClips(snapshot.clips)
+    setTransitions(snapshot.transitions)
     setHistoryVersion((v) => v + 1)
   }, [])
 
@@ -177,18 +230,8 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     if (historyIndexRef.current >= historyStackRef.current.length - 1) return
     historyIndexRef.current++
     const snapshot = historyStackRef.current[historyIndexRef.current]
-    // The snapshot at historyIndex is what clips were BEFORE the next mutation.
-    // To redo, we need the state AFTER the mutation, which is index+1.
-    // Actually: stack stores pre-mutation snapshots. undo restores them.
-    // For redo we need the state that was set after the snapshot was pushed.
-    // Since we don't store post-mutation separately, we store the next snapshot.
-    // Let me re-think: on each mutation we push the current state. Then setClips changes it.
-    // undo: go back one index, restore that state.
-    // redo: go forward one index — but we need the state *after* the change.
-    // With the current approach redo doesn't have the forward state because we store pre-mutation.
-    // FIX: store the NEW state too as a special "current" snapshot after each mutation.
-    // Simplest: just always push into historyStack and restore from there.
-    setClips(snapshot)
+    setClips(snapshot.clips)
+    setTransitions(snapshot.transitions)
     setHistoryVersion((v) => v + 1)
   }, [])
 
@@ -202,7 +245,6 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('youstudio-default-clip-duration', String(defaultClipDuration))
   }, [defaultClipDuration])
 
-  // Persist timeline state to localStorage
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
@@ -210,6 +252,13 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('youstudio-timeline-clips', JSON.stringify(clips))
     }, 300)
   }, [clips])
+
+  useEffect(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      localStorage.setItem('youstudio-timeline-transitions', JSON.stringify(transitions))
+    }, 300)
+  }, [transitions])
 
   useEffect(() => {
     localStorage.setItem('youstudio-playhead', String(playheadTime))
@@ -255,6 +304,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   const removeClip = useCallback((id: string) => {
     pushHistory()
     setClips((prev) => prev.filter((c) => c.id !== id))
+    setTransitions((prev) => prev.filter((t) => t.fromClipId !== id && t.toClipId !== id))
     setSelectedClipId((sel) => (sel === id ? null : sel))
   }, [pushHistory])
 
@@ -282,6 +332,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   const clearTimeline = useCallback(() => {
     pushHistory()
     setClips([])
+    setTransitions([])
     setSelectedClipId(null)
     setPlayheadTime(0)
     setIsPlaying(false)
@@ -319,17 +370,100 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     }))
   }, [pushHistory])
 
+  // --- Transition mutations ---
+
+  const addTransition = useCallback((fromClipId: string, toClipId: string, type: Transition['type'], duration: number) => {
+    pushHistory()
+    setTransitions((prev) => {
+      const filtered = prev.filter((t) => !(t.fromClipId === fromClipId && t.toClipId === toClipId))
+      return [...filtered, { fromClipId, toClipId, type, duration }]
+    })
+  }, [pushHistory])
+
+  const removeTransition = useCallback((fromClipId: string, toClipId: string) => {
+    pushHistory()
+    setTransitions((prev) => prev.filter((t) => !(t.fromClipId === fromClipId && t.toClipId === toClipId)))
+  }, [pushHistory])
+
+  // --- Split clip ---
+
+  const splitClip = useCallback((clipId: string, splitTime: number) => {
+    pushHistory()
+    setClips((prev) => {
+      const clip = prev.find((c) => c.id === clipId)
+      if (!clip) return prev
+      const relSplit = splitTime - clip.startTime
+      if (relSplit <= 0.1 || relSplit >= clip.duration - 0.1) return prev
+
+      const firstDuration = relSplit
+      const secondDuration = clip.duration - relSplit
+      const secondId = `clip-${nextId++}`
+
+      const first: TimelineClip = { ...clip, duration: firstDuration }
+      const second: TimelineClip = {
+        ...clip,
+        id: secondId,
+        startTime: splitTime,
+        duration: secondDuration,
+        keyframes: undefined,
+      }
+
+      return prev.map((c) => (c.id === clipId ? first : c)).concat(second)
+    })
+  }, [pushHistory])
+
+  // --- Ripple delete ---
+
+  const rippleDelete = useCallback((clipId: string) => {
+    pushHistory()
+    setClips((prev) => {
+      const clip = prev.find((c) => c.id === clipId)
+      if (!clip) return prev
+      const gap = clip.duration
+      const track = clip.track
+      const clipEnd = clip.startTime
+      return prev
+        .filter((c) => c.id !== clipId)
+        .map((c) => {
+          if (c.track === track && c.startTime > clipEnd) {
+            return { ...c, startTime: Math.max(0, c.startTime - gap) }
+          }
+          return c
+        })
+    })
+    setTransitions((prev) => prev.filter((t) => t.fromClipId !== clipId && t.toClipId !== clipId))
+    setSelectedClipId((sel) => (sel === clipId ? null : sel))
+  }, [pushHistory])
+
+  // --- Load project ---
+
+  const loadProject = useCallback((data: { clips: TimelineClip[]; transitions: Transition[] }) => {
+    pushHistory()
+    const maxNum = data.clips.reduce((m, c) => {
+      const n = parseInt(c.id.replace('clip-', ''), 10)
+      return isNaN(n) ? m : Math.max(m, n)
+    }, 0)
+    if (maxNum >= nextId) nextId = maxNum + 1
+    setClips(data.clips)
+    setTransitions(data.transitions)
+    setSelectedClipId(null)
+    setPlayheadTime(0)
+    setIsPlaying(false)
+  }, [pushHistory])
+
   // force re-read of canUndo/canRedo
   void historyVersion
 
   return (
     <TimelineContext.Provider value={{
-      clips, playheadTime, selectedClipId, isPlaying, totalDuration,
+      clips, transitions, playheadTime, selectedClipId, isPlaying, totalDuration,
       hiddenTracks, defaultClipDuration, canUndo, canRedo,
       addClip, removeClip, moveClip, trimClip, selectClip, updateClipProps,
       setPlayhead, togglePlay, clearTimeline, toggleTrackVisibility,
       setDefaultClipDuration, undo, redo,
       updateClipKeyframe, removeClipKeyframe,
+      addTransition, removeTransition,
+      splitClip, rippleDelete, loadProject,
     }}>
       {children}
     </TimelineContext.Provider>

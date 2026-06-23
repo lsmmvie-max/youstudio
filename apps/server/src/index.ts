@@ -332,6 +332,98 @@ app.put("/settings/profile", (req, res) => {
   }
 });
 
+// --- Project save/load ---
+const PROJECTS_DIR = "C:\\YouStudio\\projects";
+
+app.post("/projects/save", (req, res) => {
+  try {
+    const { name, clips, transitions } = req.body as {
+      name: string;
+      clips: unknown[];
+      transitions: unknown[];
+    };
+    if (!name) {
+      res.status(400).json({ error: "name is required" });
+      return;
+    }
+    fs.mkdirSync(PROJECTS_DIR, { recursive: true });
+    const timestamp = Date.now();
+    const id = `proj-${timestamp}`;
+    const filename = `${name.replace(/[^a-zA-Z0-9_-]/g, "_")}-${timestamp}.json`;
+    const filePath = path.join(PROJECTS_DIR, filename);
+    const project = {
+      id,
+      name,
+      date: new Date().toISOString(),
+      clipCount: clips?.length ?? 0,
+      clips: clips ?? [],
+      transitions: transitions ?? [],
+    };
+    fs.writeFileSync(filePath, JSON.stringify(project, null, 2), "utf-8");
+    res.json({ id, path: filePath });
+  } catch {
+    res.status(500).json({ error: "Failed to save project" });
+  }
+});
+
+app.get("/projects/list", (_req, res) => {
+  try {
+    if (!fs.existsSync(PROJECTS_DIR)) {
+      res.json({ projects: [] });
+      return;
+    }
+    const files = fs
+      .readdirSync(PROJECTS_DIR)
+      .filter((f) => f.endsWith(".json"))
+      .sort()
+      .reverse();
+
+    const projects = files.map((f) => {
+      try {
+        const raw = JSON.parse(
+          fs.readFileSync(path.join(PROJECTS_DIR, f), "utf-8")
+        );
+        return {
+          id: raw.id ?? f,
+          name: raw.name ?? f.replace(".json", ""),
+          date: raw.date ?? "",
+          clipCount: raw.clipCount ?? 0,
+        };
+      } catch {
+        return null;
+      }
+    }).filter(Boolean);
+
+    res.json({ projects });
+  } catch {
+    res.status(500).json({ error: "Failed to list projects" });
+  }
+});
+
+app.get("/projects/:id", (req, res) => {
+  try {
+    if (!fs.existsSync(PROJECTS_DIR)) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+    const files = fs.readdirSync(PROJECTS_DIR).filter((f) => f.endsWith(".json"));
+    for (const f of files) {
+      try {
+        const raw = JSON.parse(
+          fs.readFileSync(path.join(PROJECTS_DIR, f), "utf-8")
+        );
+        if (raw.id === req.params.id) {
+          res.json({ clips: raw.clips ?? [], transitions: raw.transitions ?? [] });
+          return;
+        }
+      } catch { /* skip corrupt files */ }
+    }
+    res.status(404).json({ error: "Project not found" });
+  } catch {
+    res.status(500).json({ error: "Failed to load project" });
+  }
+});
+
 app.get("/usage", (_req, res) => {
   const providers: Provider[] = ["openrouter", "fal", "stability", "youtube"];
   const usage: Record<string, unknown> = {};

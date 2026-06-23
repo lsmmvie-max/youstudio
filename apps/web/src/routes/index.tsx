@@ -12,7 +12,7 @@ import { TimelineProvider, useTimeline } from '#/components/editor/timeline-cont
 export const Route = createFileRoute('/')({ component: Editor })
 
 function KeyboardListener() {
-  const { undo, redo, clips, selectedClipId, updateClipProps, trimClip } = useTimeline()
+  const { undo, redo, clips, selectedClipId, updateClipProps, trimClip, splitClip, rippleDelete, playheadTime } = useTimeline()
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -24,6 +24,20 @@ function KeyboardListener() {
       }
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
         e.preventDefault(); redo(); return
+      }
+
+      // Split clip (Ctrl+K)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault()
+        if (selectedClipId) splitClip(selectedClipId, playheadTime)
+        return
+      }
+
+      // Ripple delete (Shift+Delete)
+      if (e.shiftKey && e.key === 'Delete') {
+        e.preventDefault()
+        if (selectedClipId) rippleDelete(selectedClipId)
+        return
       }
 
       if (!selectedClipId) return
@@ -62,7 +76,7 @@ function KeyboardListener() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [undo, redo, clips, selectedClipId, updateClipProps, trimClip])
+  }, [undo, redo, clips, selectedClipId, updateClipProps, trimClip, splitClip, rippleDelete, playheadTime])
 
   return null
 }

@@ -1,8 +1,9 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { Stage, Layer, Image as KImage, Text, Transformer, Rect, Line } from 'react-konva'
+import { Stage, Layer, Image as KImage, Text, Transformer, Rect, Line, Group } from 'react-konva'
 import useImage from 'use-image'
 import { useTimeline, interpolateClip, TRACK_META, type TimelineClip } from './timeline-context.tsx'
 import type Konva from 'konva'
+import KonvaFilters from 'konva'
 
 const CANVAS_ASPECT = 16 / 9
 const SNAP_THRESHOLD = 20
@@ -36,6 +37,41 @@ function ClipImage({ clip, interpolated, isSelected, onSelect, onDragEnd, onTran
       trRef.current.getLayer()?.batchDraw()
     }
   }, [isSelected])
+
+  // Apply color grading filters
+  useEffect(() => {
+    const node = shapeRef.current
+    if (!node || !img) return
+    const cg = clip.colorGrading
+    if (!cg) {
+      node.filters([])
+      node.clearCache()
+      return
+    }
+    const hasGrading = cg.brightness !== 0 || cg.contrast !== 0 || cg.saturation !== 0 || cg.hue !== 0
+    if (!hasGrading) {
+      node.filters([])
+      node.clearCache()
+      return
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const filters: any[] = []
+    if (cg.brightness !== 0) {
+      node.brightness(cg.brightness / 100)
+      filters.push(KonvaFilters.Filters.Brighten)
+    }
+    if (cg.contrast !== 0) {
+      node.contrast(cg.contrast)
+      filters.push(KonvaFilters.Filters.Contrast)
+    }
+    if (cg.saturation !== 0 || cg.hue !== 0) {
+      node.saturation(cg.saturation / 100)
+      node.hue(cg.hue * 3.6)
+      filters.push(KonvaFilters.Filters.HSL)
+    }
+    node.filters(filters)
+    node.cache()
+  }, [clip.colorGrading, img])
 
   const badge = TRACK_META[clip.track]?.label ?? ''
 
@@ -116,6 +152,151 @@ function ClipImage({ clip, interpolated, isSelected, onSelect, onDragEnd, onTran
   )
 }
 
+function VideoClip({ clip, playheadTime, isPlaying }: {
+  clip: TimelineClip
+  playheadTime: number
+  isPlaying: boolean
+}) {
+  const imageRef = useRef<Konva.Image>(null)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const animFrameRef = useRef<number>(0)
+
+  useEffect(() => {
+    const video = document.createElement('video')
+    video.src = clip.src
+    video.crossOrigin = 'anonymous'
+    video.playsInline = true
+    video.muted = true
+    video.preload = 'auto'
+    videoRef.current = video
+
+    return () => {
+      video.pause()
+      video.src = ''
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
+    }
+  }, [clip.src])
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    video.playbackRate = clip.speed ?? 1
+  }, [clip.speed])
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    const relTime = playheadTime - clip.startTime
+    if (relTime < 0 || relTime > clip.duration) return
+
+    if (isPlaying) {
+      video.currentTime = relTime
+      video.play().catch(() => {})
+
+      const updateFrame = () => {
+        const node = imageRef.current
+        if (node) {
+          node.image(video)
+          node.getLayer()?.batchDraw()
+        }
+        animFrameRef.current = requestAnimationFrame(updateFrame)
+      }
+      animFrameRef.current = requestAnimationFrame(updateFrame)
+    } else {
+      video.pause()
+      video.currentTime = relTime
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
+
+      video.onseeked = () => {
+        const node = imageRef.current
+        if (node) {
+          node.image(video)
+          node.getLayer()?.batchDraw()
+        }
+      }
+    }
+
+    return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
+    }
+  }, [playheadTime, isPlaying, clip.startTime, clip.duration])
+
+  const interp = interpolateClip(clip, playheadTime)
+
+  return (
+    <KImage
+      ref={imageRef}
+      image={undefined as unknown as HTMLImageElement}
+      x={interp.x}
+      y={interp.y}
+      width={interp.width}
+      height={interp.height}
+      rotation={interp.rotation}
+      opacity={interp.opacity / 100}
+      listening={false}
+    />
+  )
+}
+
+function TextClip({ clip, playheadTime }: {
+  clip: TimelineClip
+  playheadTime: number
+}) {
+  const elapsed = playheadTime - clip.startTime
+  const progress = clip.duration > 0 ? Math.min(1, elapsed / clip.duration) : 1
+  const text = clip.text ?? ''
+  const animation = clip.textAnimation ?? 'none'
+
+  let displayText = text
+  let opacity = (clip.opacity ?? 100) / 100
+  let offsetY = 0
+  let scaleVal = 1
+
+  switch (animation) {
+    case 'typewriter': {
+      const charCount = Math.floor(progress * text.length)
+      displayText = text.substring(0, charCount)
+      break
+    }
+    case 'fade-in': {
+      if (progress < 0.3) opacity *= progress / 0.3
+      break
+    }
+    case 'slide-up': {
+      if (progress < 0.3) offsetY = 50 * (1 - progress / 0.3)
+      break
+    }
+    case 'slide-down': {
+      if (progress < 0.3) offsetY = -50 * (1 - progress / 0.3)
+      break
+    }
+    case 'pop': {
+      if (progress < 0.2) scaleVal = 0.5 + 0.5 * (progress / 0.2)
+      break
+    }
+  }
+
+  const interp = interpolateClip(clip, playheadTime)
+
+  return (
+    <Text
+      x={interp.x}
+      y={interp.y + offsetY}
+      width={interp.width}
+      text={displayText}
+      fontSize={clip.fontSize ?? 64}
+      fontFamily={clip.fontFamily ?? 'Inter, system-ui, sans-serif'}
+      fontStyle={`${clip.bold ? 'bold' : ''} ${clip.italic ? 'italic' : ''}`.trim() || 'normal'}
+      fill={clip.fontColor ?? '#ffffff'}
+      align={clip.textAlign ?? 'center'}
+      opacity={opacity}
+      scaleX={scaleVal}
+      scaleY={scaleVal}
+      listening={false}
+    />
+  )
+}
+
 function CaptionText({ clip, stageWidth, stageHeight }: {
   clip: { text?: string }
   stageWidth: number
@@ -142,7 +323,6 @@ function CaptionText({ clip, stageWidth, stageHeight }: {
 
 function GridOverlay() {
   const lines: React.ReactNode[] = []
-  // 10% grid
   for (let x = 192; x < 1920; x += 192) {
     const isThird = x === 640 || x === 1280
     lines.push(<Line key={`gx${x}`} points={[x, 0, x, 1080]} stroke={isThird ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.1)'} strokeWidth={1} listening={false} />)
@@ -151,7 +331,6 @@ function GridOverlay() {
     const isThird = y === 360 || y === 720
     lines.push(<Line key={`gy${y}`} points={[0, y, 1920, y]} stroke={isThird ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.1)'} strokeWidth={1} listening={false} />)
   }
-  // Center crosshair
   lines.push(<Line key="cx" points={[960, 0, 960, 1080]} stroke="#7C3AED" strokeWidth={1} opacity={0.5} listening={false} />)
   lines.push(<Line key="cy" points={[0, 540, 1920, 540]} stroke="#7C3AED" strokeWidth={1} opacity={0.5} listening={false} />)
   return <>{lines}</>
@@ -166,14 +345,96 @@ function SnapGuides({ guideX, guideY }: { guideX: number | null; guideY: number 
   )
 }
 
+// Audio engine hook
+function useAudioEngine(clips: TimelineClip[], playheadTime: number, isPlaying: boolean) {
+  const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map())
+
+  useEffect(() => {
+    const audioClips = clips.filter((c) => c.type === 'audio')
+
+    for (const clip of audioClips) {
+      if (!audioElementsRef.current.has(clip.id)) {
+        const audio = new Audio(clip.src)
+        audio.crossOrigin = 'anonymous'
+        audio.preload = 'auto'
+        audioElementsRef.current.set(clip.id, audio)
+      }
+    }
+
+    // Clean up removed clips
+    for (const [id, audio] of audioElementsRef.current.entries()) {
+      if (!audioClips.find((c) => c.id === id)) {
+        audio.pause()
+        audio.src = ''
+        audioElementsRef.current.delete(id)
+      }
+    }
+  }, [clips])
+
+  useEffect(() => {
+    const audioClips = clips.filter((c) => c.type === 'audio')
+
+    for (const clip of audioClips) {
+      const audio = audioElementsRef.current.get(clip.id)
+      if (!audio) continue
+
+      const relTime = playheadTime - clip.startTime
+      const isActive = relTime >= 0 && relTime < clip.duration
+
+      if (!isActive || !isPlaying) {
+        audio.pause()
+        continue
+      }
+
+      const effects = clip.audioEffects
+      const speed = effects?.speed ?? 1
+      const volume = effects?.volume ?? (clip.volume ?? 1)
+
+      audio.playbackRate = speed
+      audio.volume = Math.max(0, Math.min(1, volume))
+
+      // Fade in/out
+      if (effects) {
+        const fadeIn = effects.fadeIn ?? 0
+        const fadeOut = effects.fadeOut ?? 0
+        let fadeVolume = volume
+
+        if (fadeIn > 0 && relTime < fadeIn) {
+          fadeVolume = volume * (relTime / fadeIn)
+        }
+        if (fadeOut > 0 && relTime > clip.duration - fadeOut) {
+          fadeVolume = volume * ((clip.duration - relTime) / fadeOut)
+        }
+        audio.volume = Math.max(0, Math.min(1, fadeVolume))
+      }
+
+      if (Math.abs(audio.currentTime - relTime) > 0.3) {
+        audio.currentTime = relTime
+      }
+      audio.play().catch(() => {})
+    }
+  }, [clips, playheadTime, isPlaying])
+
+  // Stop all audio when not playing
+  useEffect(() => {
+    if (!isPlaying) {
+      for (const audio of audioElementsRef.current.values()) {
+        audio.pause()
+      }
+    }
+  }, [isPlaying])
+}
+
 export function PreviewCanvas() {
-  const { clips, playheadTime, selectedClipId, selectClip, updateClipProps, removeClip, hiddenTracks } = useTimeline()
+  const { clips, transitions, playheadTime, selectedClipId, isPlaying, selectClip, updateClipProps, removeClip, hiddenTracks } = useTimeline()
   const containerRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ w: 640, h: 360 })
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; clipId: string } | null>(null)
   const [showGrid, setShowGrid] = useState(false)
   const [guideX, setGuideX] = useState<number | null>(null)
   const [guideY, setGuideY] = useState<number | null>(null)
+
+  useAudioEngine(clips, playheadTime, isPlaying)
 
   useEffect(() => {
     const el = containerRef.current
@@ -209,7 +470,53 @@ export function PreviewCanvas() {
     .sort((a, b) => a.track - b.track)
 
   const imageClips = activeClips.filter((c) => c.type === 'image')
+  const videoClips = activeClips.filter((c) => c.type === 'video')
   const captionClips = activeClips.filter((c) => c.type === 'caption')
+  const textClips = activeClips.filter((c) => c.type === 'text')
+
+  // Compute transition opacity adjustments
+  const getTransitionOpacity = useCallback((clip: TimelineClip): { opacity: number; clipRegion?: { x: number; y: number; width: number; height: number }; scale?: number } => {
+    for (const tr of transitions) {
+      const fromClip = clips.find((c) => c.id === tr.fromClipId)
+      const toClip = clips.find((c) => c.id === tr.toClipId)
+      if (!fromClip || !toClip) continue
+
+      const overlapStart = Math.max(fromClip.startTime, toClip.startTime - tr.duration)
+      const overlapEnd = fromClip.startTime + fromClip.duration
+
+      if (playheadTime < overlapStart || playheadTime >= overlapEnd) continue
+      const progress = (playheadTime - overlapStart) / (overlapEnd - overlapStart)
+
+      if (clip.id === tr.fromClipId) {
+        switch (tr.type) {
+          case 'fade':
+          case 'dissolve':
+            return { opacity: 1 - progress }
+          case 'zoom':
+            return { opacity: 1 - progress, scale: 1 + progress * 0.2 }
+          default:
+            return { opacity: 1 }
+        }
+      }
+
+      if (clip.id === tr.toClipId) {
+        switch (tr.type) {
+          case 'fade':
+          case 'dissolve':
+            return { opacity: progress }
+          case 'wipe-left':
+            return { opacity: 1, clipRegion: { x: 1920 * (1 - progress), y: 0, width: 1920 * progress, height: 1080 } }
+          case 'wipe-right':
+            return { opacity: 1, clipRegion: { x: 0, y: 0, width: 1920 * progress, height: 1080 } }
+          case 'zoom':
+            return { opacity: progress }
+          default:
+            return { opacity: 1 }
+        }
+      }
+    }
+    return { opacity: 1 }
+  }, [transitions, clips, playheadTime])
 
   const handleStageClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
     if (e.target === e.target.getStage()) {
@@ -275,11 +582,31 @@ export function PreviewCanvas() {
             <Rect x={0} y={0} width={1920} height={1080} fill="#000" listening={false} />
             {imageClips.map((clip) => {
               const interp = interpolateClip(clip, playheadTime)
+              const trEffect = getTransitionOpacity(clip)
+              const adjustedInterp = {
+                ...interp,
+                opacity: interp.opacity * trEffect.opacity,
+              }
+              if (trEffect.clipRegion) {
+                return (
+                  <Group key={clip.id} clipX={trEffect.clipRegion.x} clipY={trEffect.clipRegion.y} clipWidth={trEffect.clipRegion.width} clipHeight={trEffect.clipRegion.height}>
+                    <ClipImage
+                      clip={clip}
+                      interpolated={adjustedInterp}
+                      isSelected={selectedClipId === clip.id}
+                      onSelect={() => selectClip(clip.id)}
+                      onDragEnd={(x, y) => updateClipProps(clip.id, { x, y })}
+                      onTransformEnd={(w, h, x, y) => updateClipProps(clip.id, { width: w, height: h, x, y })}
+                      onDragMove={handleDragMove}
+                    />
+                  </Group>
+                )
+              }
               return (
                 <ClipImage
                   key={clip.id}
                   clip={clip}
-                  interpolated={interp}
+                  interpolated={adjustedInterp}
                   isSelected={selectedClipId === clip.id}
                   onSelect={() => selectClip(clip.id)}
                   onDragEnd={(x, y) => updateClipProps(clip.id, { x, y })}
@@ -288,6 +615,14 @@ export function PreviewCanvas() {
                 />
               )
             })}
+            {videoClips.map((clip) => (
+              <VideoClip
+                key={clip.id}
+                clip={clip}
+                playheadTime={playheadTime}
+                isPlaying={isPlaying}
+              />
+            ))}
           </Layer>
 
           {/* Grid overlay layer */}
@@ -302,12 +637,15 @@ export function PreviewCanvas() {
             <SnapGuides guideX={guideX} guideY={guideY} />
           </Layer>
 
-          {/* Captions layer (on top) */}
+          {/* Text + Captions layer (on top) */}
           <Layer listening={false}>
+            {textClips.map((clip) => (
+              <TextClip key={clip.id} clip={clip} playheadTime={playheadTime} />
+            ))}
             {captionClips.map((clip) => (
               <CaptionText key={clip.id} clip={clip} stageWidth={1920} stageHeight={1080} />
             ))}
-            {imageClips.length === 0 && captionClips.length === 0 && (
+            {imageClips.length === 0 && videoClips.length === 0 && captionClips.length === 0 && textClips.length === 0 && (
               <>
                 <Text x={960} y={520} text="No media" fontSize={28} fill="#666" align="center" offsetX={40} listening={false} />
                 <Text x={960} y={555} text="Drop assets onto the timeline" fontSize={20} fill="#444" align="center" offsetX={120} listening={false} />
