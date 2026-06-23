@@ -358,6 +358,21 @@ export function Timeline() {
                             {isCaption ? clip.text : clip.name}
                           </span>
                         </div>
+                        {/* Keyframe diamonds */}
+                        {clip.keyframes && clip.keyframes.length > 0 && clipW > 0 && (
+                          <div className="pointer-events-none absolute inset-x-0 bottom-0.5 z-20 h-2">
+                            {clip.keyframes.map((kf) => {
+                              const pct = clip.duration > 0 ? (kf.time / clip.duration) * 100 : 0
+                              return (
+                                <div
+                                  key={kf.time}
+                                  className="absolute -translate-x-1/2 rotate-45 border border-yellow-300 bg-yellow-400"
+                                  style={{ left: `${pct}%`, width: 6, height: 6 }}
+                                />
+                              )
+                            })}
+                          </div>
+                        )}
                       </div>
                     )
                   })}

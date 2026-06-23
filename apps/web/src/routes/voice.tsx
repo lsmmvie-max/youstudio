@@ -26,6 +26,7 @@ function VoiceBooth() {
   const [transcribing, setTranscribing] = useState(false)
   const [transcript, setTranscript] = useState<string | null>(null)
   const [playingId, setPlayingId] = useState<string | null>(null)
+  const [loadedTakeId, setLoadedTakeId] = useState<string | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -175,27 +176,14 @@ function VoiceBooth() {
     }
   }
 
-  const selectTake = (id: string) => {
-    fetch(`${API}/voice/takes/${id}/select`, { method: 'PUT' })
-      .then(() => { setSelectedTake(id); fetchTakes() })
-      .catch(() => {})
-  }
-
-  const deleteTake = (id: string) => {
-    fetch(`${API}/voice/takes/${id}`, { method: 'DELETE' })
-      .then(() => fetchTakes())
-      .catch(() => {})
-  }
-
-  const playTake = (filename: string, id: string) => {
+  const loadTakeWaveform = useCallback((filename: string, takeId: string) => {
+    if (loadedTakeId === takeId && wavesurferRef.current) return
     if (wavesurferRef.current) {
       wavesurferRef.current.destroy()
       wavesurferRef.current = null
     }
-    if (playingId === id) {
-      setPlayingId(null)
-      return
-    }
+    setPlayingId(null)
+    setLoadedTakeId(takeId)
 
     const container = wavesurferContainerRef.current
     if (!container) return
@@ -216,13 +204,65 @@ function VoiceBooth() {
       setPlayingId(null)
     })
 
-    ws.on('ready', () => {
-      ws.play()
-    })
-
     wavesurferRef.current = ws
-    setPlayingId(id)
+  }, [loadedTakeId])
+
+  const selectTake = (id: string) => {
+    fetch(`${API}/voice/takes/${id}/select`, { method: 'PUT' })
+      .then(() => {
+        setSelectedTake(id)
+        fetchTakes()
+        const take = takes.find((t) => t.id === id)
+        if (take) loadTakeWaveform(take.filename, id)
+      })
+      .catch(() => {})
   }
+
+  const deleteTake = (id: string) => {
+    if (loadedTakeId === id) {
+      wavesurferRef.current?.destroy()
+      wavesurferRef.current = null
+      setLoadedTakeId(null)
+      setPlayingId(null)
+    }
+    fetch(`${API}/voice/takes/${id}`, { method: 'DELETE' })
+      .then(() => fetchTakes())
+      .catch(() => {})
+  }
+
+  const playTake = (_filename: string, id: string) => {
+    const ws = wavesurferRef.current
+    if (!ws || loadedTakeId !== id) {
+      const take = takes.find((t) => t.id === id)
+      if (take) {
+        loadTakeWaveform(take.filename, id)
+        // wait for ready then play
+        setTimeout(() => {
+          wavesurferRef.current?.on('ready', () => {
+            wavesurferRef.current?.play()
+            setPlayingId(id)
+          })
+        }, 50)
+      }
+      return
+    }
+
+    if (playingId === id) {
+      ws.pause()
+      setPlayingId(null)
+    } else {
+      ws.play()
+      setPlayingId(id)
+    }
+  }
+
+  // Auto-load selected take waveform on mount
+  useEffect(() => {
+    if (selectedTake && takes.length > 0 && !loadedTakeId) {
+      const take = takes.find((t) => t.id === selectedTake)
+      if (take) loadTakeWaveform(take.filename, selectedTake)
+    }
+  }, [selectedTake, takes, loadedTakeId, loadTakeWaveform])
 
   useEffect(() => {
     return () => {
@@ -327,7 +367,7 @@ function VoiceBooth() {
             </p>
           </div>
 
-          {/* Waveform — live recording uses canvas, playback uses WaveSurfer */}
+          {/* Waveform — live recording uses canvas, idle/playback uses WaveSurfer */}
           {recording ? (
             <canvas
               ref={canvasRef}
@@ -339,16 +379,21 @@ function VoiceBooth() {
             <div className="w-full max-w-lg">
               <div
                 ref={wavesurferContainerRef}
-                className="min-h-[80px] w-full rounded-lg border border-border bg-[hsl(240_6%_10%)]"
+                className="w-full rounded-lg border border-border bg-[hsl(240_6%_10%)]"
+                style={{ minHeight: loadedTakeId ? undefined : 80, display: loadedTakeId ? 'block' : 'none' }}
               />
-              {!playingId && (
+              {!loadedTakeId && (
                 <canvas
                   ref={canvasRef}
                   width={500}
                   height={80}
-                  className="mt-1 w-full rounded-lg border border-border"
-                  style={{ display: wavesurferRef.current ? 'none' : 'block' }}
+                  className="w-full rounded-lg border border-border"
                 />
+              )}
+              {loadedTakeId && (
+                <p className="mt-1 text-center text-[9px] text-muted-foreground/50">
+                  {playingId ? 'Playing...' : 'Click waveform to seek, Play to start'}
+                </p>
               )}
             </div>
           )}

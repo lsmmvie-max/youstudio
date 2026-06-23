@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '#/components/ui/tabs.tsx'
 import { TopBar } from '#/components/editor/top-bar.tsx'
@@ -7,15 +7,38 @@ import { PreviewCanvas } from '#/components/editor/preview-canvas.tsx'
 import { Timeline } from '#/components/editor/timeline.tsx'
 import { PropertiesPanel } from '#/components/editor/properties-panel.tsx'
 import { AiChat } from '#/components/editor/ai-chat.tsx'
-import { TimelineProvider } from '#/components/editor/timeline-context.tsx'
+import { TimelineProvider, useTimeline } from '#/components/editor/timeline-context.tsx'
 
 export const Route = createFileRoute('/')({ component: Editor })
+
+function UndoRedoListener() {
+  const { undo, redo } = useTimeline()
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        undo()
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault()
+        redo()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [undo, redo])
+
+  return null
+}
 
 function Editor() {
   const [rightTab, setRightTab] = useState('properties')
 
   return (
     <TimelineProvider>
+      <UndoRedoListener />
       <div style={{ width: '100%', height: '100dvh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} className="bg-background">
         <TopBar />
 

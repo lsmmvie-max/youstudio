@@ -1,6 +1,7 @@
 import { Separator } from '#/components/ui/separator.tsx'
 import { useTimeline } from './timeline-context.tsx'
 import { ExpressionPanel } from './expression-panel.tsx'
+import { KeyframeEditor } from './keyframe-editor.tsx'
 
 function PropertyInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
@@ -133,6 +134,13 @@ export function PropertiesPanel() {
                 rows={3}
               />
             </div>
+          </>
+        )}
+
+        {clip.type === 'image' && (
+          <>
+            <Separator className="my-2" />
+            <KeyframeEditor clip={clip} />
           </>
         )}
 

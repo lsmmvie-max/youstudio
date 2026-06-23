@@ -1,13 +1,14 @@
-import { useRef, useEffect, useState, useCallback } from 'react'
+import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import { Stage, Layer, Image as KImage, Text, Transformer, Rect } from 'react-konva'
 import useImage from 'use-image'
-import { useTimeline, TRACK_META } from './timeline-context.tsx'
+import { useTimeline, interpolateClip, TRACK_META, type TimelineClip } from './timeline-context.tsx'
 import type Konva from 'konva'
 
 const CANVAS_ASPECT = 16 / 9
 
-function ClipImage({ clip, isSelected, onSelect, onDragEnd, onTransformEnd }: {
-  clip: { id: string; src: string; x: number; y: number; width: number; height: number; rotation: number; opacity: number; track: number; name: string }
+function ClipImage({ clip, interpolated, isSelected, onSelect, onDragEnd, onTransformEnd }: {
+  clip: TimelineClip
+  interpolated: { x: number; y: number; width: number; height: number; rotation: number; opacity: number }
   isSelected: boolean
   onSelect: () => void
   onDragEnd: (x: number, y: number) => void
@@ -31,12 +32,12 @@ function ClipImage({ clip, isSelected, onSelect, onDragEnd, onTransformEnd }: {
       <KImage
         ref={shapeRef}
         image={img}
-        x={clip.x}
-        y={clip.y}
-        width={clip.width}
-        height={clip.height}
-        rotation={clip.rotation}
-        opacity={clip.opacity / 100}
+        x={interpolated.x}
+        y={interpolated.y}
+        width={interpolated.width}
+        height={interpolated.height}
+        rotation={interpolated.rotation}
+        opacity={interpolated.opacity / 100}
         draggable
         onClick={onSelect}
         onTap={onSelect}
@@ -72,8 +73,8 @@ function ClipImage({ clip, isSelected, onSelect, onDragEnd, onTransformEnd }: {
       )}
       {badge && img && (
         <>
-          <Rect x={clip.x + 4} y={clip.y + 4} width={30} height={16} fill="rgba(0,0,0,0.6)" cornerRadius={3} listening={false} />
-          <Text x={clip.x + 4} y={clip.y + 5} width={30} text={badge} fontSize={10} fontStyle="bold" fill="#fff" align="center" listening={false} />
+          <Rect x={interpolated.x + 4} y={interpolated.y + 4} width={30} height={16} fill="rgba(0,0,0,0.6)" cornerRadius={3} listening={false} />
+          <Text x={interpolated.x + 4} y={interpolated.y + 5} width={30} text={badge} fontSize={10} fontStyle="bold" fill="#fff" align="center" listening={false} />
         </>
       )}
     </>
@@ -181,16 +182,20 @@ export function PreviewCanvas() {
       >
         <Layer>
           <Rect x={0} y={0} width={1920} height={1080} fill="#000" listening={false} />
-          {imageClips.map((clip) => (
-            <ClipImage
-              key={clip.id}
-              clip={clip}
-              isSelected={selectedClipId === clip.id}
-              onSelect={() => selectClip(clip.id)}
-              onDragEnd={(x, y) => updateClipProps(clip.id, { x, y })}
-              onTransformEnd={(w, h, x, y) => updateClipProps(clip.id, { width: w, height: h, x, y })}
-            />
-          ))}
+          {imageClips.map((clip) => {
+            const interp = interpolateClip(clip, playheadTime)
+            return (
+              <ClipImage
+                key={clip.id}
+                clip={clip}
+                interpolated={interp}
+                isSelected={selectedClipId === clip.id}
+                onSelect={() => selectClip(clip.id)}
+                onDragEnd={(x, y) => updateClipProps(clip.id, { x, y })}
+                onTransformEnd={(w, h, x, y) => updateClipProps(clip.id, { width: w, height: h, x, y })}
+              />
+            )
+          })}
           {captionClips.map((clip) => (
             <CaptionText key={clip.id} clip={clip} stageWidth={1920} stageHeight={1080} />
           ))}
