@@ -25,11 +25,14 @@ export function Timeline() {
   const [dragOffset, setDragOffset] = useState(0)
   const [dropHighlight, setDropHighlight] = useState(false)
   const [captionsEnabled, setCaptionsEnabled] = useState(false)
+  const [snapLineX, setSnapLineX] = useState<number | null>(null)
   const musicInputRef = useRef<HTMLInputElement>(null)
+
+  const SNAP_THRESHOLD_PX = 8
 
   const timelineWidth = Math.max(totalDuration * PIXELS_PER_SECOND, 800)
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts (Delete, Backspace, E for expression cycle)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!selectedClipId) return
@@ -37,16 +40,6 @@ export function Timeline() {
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault()
         removeClip(selectedClipId)
-      }
-      if (e.key === 'ArrowLeft') {
-        e.preventDefault()
-        const clip = clips.find((c) => c.id === selectedClipId)
-        if (clip) moveClip(clip.id, clip.startTime - 0.1)
-      }
-      if (e.key === 'ArrowRight') {
-        e.preventDefault()
-        const clip = clips.find((c) => c.id === selectedClipId)
-        if (clip) moveClip(clip.id, clip.startTime + 0.1)
       }
       if (e.key === 'e' || e.key === 'E') {
         const clip = clips.find((c) => c.id === selectedClipId)
@@ -57,7 +50,7 @@ export function Timeline() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [selectedClipId, clips, removeClip, moveClip])
+  }, [selectedClipId, clips, removeClip])
 
   const handleRulerClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
@@ -78,11 +71,33 @@ export function Timeline() {
     const scrollEl = scrollRef.current
     if (!scrollEl) return
     const rect = scrollEl.getBoundingClientRect()
-    const x = e.clientX - rect.left + scrollEl.scrollLeft - dragOffset
-    moveClip(dragClipId, Math.max(0, x / PIXELS_PER_SECOND))
-  }, [dragClipId, dragOffset, moveClip])
+    const rawX = e.clientX - rect.left + scrollEl.scrollLeft - dragOffset
+    let time = Math.max(0, rawX / PIXELS_PER_SECOND)
 
-  const handleMouseUp = useCallback(() => { setDragClipId(null) }, [])
+    // Build snap targets
+    const snapTimes: number[] = [playheadTime]
+    for (const c of clips) {
+      if (c.id === dragClipId) continue
+      snapTimes.push(c.startTime, c.startTime + c.duration)
+    }
+    for (let t = 0; t <= totalDuration; t += 1) snapTimes.push(t)
+
+    const thresholdSec = SNAP_THRESHOLD_PX / PIXELS_PER_SECOND
+    let snapped = false
+    for (const st of snapTimes) {
+      if (Math.abs(time - st) < thresholdSec) {
+        time = st
+        setSnapLineX(st * PIXELS_PER_SECOND)
+        snapped = true
+        break
+      }
+    }
+    if (!snapped) setSnapLineX(null)
+
+    moveClip(dragClipId, time)
+  }, [dragClipId, dragOffset, moveClip, clips, playheadTime, totalDuration])
+
+  const handleMouseUp = useCallback(() => { setDragClipId(null); setSnapLineX(null) }, [])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -328,7 +343,9 @@ export function Timeline() {
                             : {}),
                         }}
                         onMouseDown={(e) => handleClipMouseDown(e, clip.id)}
-                        onDoubleClick={() => {
+                        onClick={(e) => e.stopPropagation()}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation()
                           const newDur = window.prompt('Duration (seconds):', String(clip.duration))
                           if (newDur) {
                             const n = parseFloat(newDur)
@@ -379,6 +396,16 @@ export function Timeline() {
               </div>
             )
           })}
+
+          {/* Snap line */}
+          {snapLineX !== null && (
+            <div
+              className="pointer-events-none absolute top-0 z-30"
+              style={{ left: snapLineX, height: RULER_HEIGHT + TRACK_COUNT * TRACK_HEIGHT }}
+            >
+              <div className="h-full w-px bg-yellow-400/80" />
+            </div>
+          )}
 
           {/* Playhead */}
           <div

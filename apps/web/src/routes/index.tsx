@@ -11,24 +11,58 @@ import { TimelineProvider, useTimeline } from '#/components/editor/timeline-cont
 
 export const Route = createFileRoute('/')({ component: Editor })
 
-function UndoRedoListener() {
-  const { undo, redo } = useTimeline()
+function KeyboardListener() {
+  const { undo, redo, clips, selectedClipId, updateClipProps, trimClip } = useTimeline()
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
+      // Undo / Redo
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-        e.preventDefault()
-        undo()
+        e.preventDefault(); undo(); return
       }
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault(); redo(); return
+      }
+
+      if (!selectedClipId) return
+      const clip = clips.find((c) => c.id === selectedClipId)
+      if (!clip) return
+
+      const step = e.shiftKey ? 10 : 1
+
+      // Arrow keys nudge position on canvas
+      if (e.key === 'ArrowLeft' && !e.ctrlKey && !e.metaKey) {
         e.preventDefault()
-        redo()
+        updateClipProps(clip.id, { x: clip.x - step })
+      }
+      if (e.key === 'ArrowRight' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault()
+        updateClipProps(clip.id, { x: clip.x + step })
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        updateClipProps(clip.id, { y: clip.y - step })
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        updateClipProps(clip.id, { y: clip.y + step })
+      }
+
+      // [ and ] adjust duration
+      if (e.key === '[') {
+        e.preventDefault()
+        trimClip(clip.id, clip.duration - 0.1)
+      }
+      if (e.key === ']') {
+        e.preventDefault()
+        trimClip(clip.id, clip.duration + 0.1)
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [undo, redo])
+  }, [undo, redo, clips, selectedClipId, updateClipProps, trimClip])
 
   return null
 }
@@ -38,7 +72,7 @@ function Editor() {
 
   return (
     <TimelineProvider>
-      <UndoRedoListener />
+      <KeyboardListener />
       <div style={{ width: '100%', height: '100dvh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} className="bg-background">
         <TopBar />
 

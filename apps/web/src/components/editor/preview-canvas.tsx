@@ -1,18 +1,30 @@
-import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
-import { Stage, Layer, Image as KImage, Text, Transformer, Rect } from 'react-konva'
+import { useRef, useEffect, useState, useCallback } from 'react'
+import { Stage, Layer, Image as KImage, Text, Transformer, Rect, Line } from 'react-konva'
 import useImage from 'use-image'
 import { useTimeline, interpolateClip, TRACK_META, type TimelineClip } from './timeline-context.tsx'
 import type Konva from 'konva'
 
 const CANVAS_ASPECT = 16 / 9
+const SNAP_THRESHOLD = 20
 
-function ClipImage({ clip, interpolated, isSelected, onSelect, onDragEnd, onTransformEnd }: {
+const SNAP_LINES_X = [0, 640, 960, 1280, 1920]
+const SNAP_LINES_Y = [0, 360, 540, 720, 1080]
+
+function snapValue(val: number, targets: number[], threshold: number): { snapped: number; target: number | null } {
+  for (const t of targets) {
+    if (Math.abs(val - t) < threshold) return { snapped: t, target: t }
+  }
+  return { snapped: val, target: null }
+}
+
+function ClipImage({ clip, interpolated, isSelected, onSelect, onDragEnd, onTransformEnd, onDragMove }: {
   clip: TimelineClip
   interpolated: { x: number; y: number; width: number; height: number; rotation: number; opacity: number }
   isSelected: boolean
   onSelect: () => void
   onDragEnd: (x: number, y: number) => void
   onTransformEnd: (w: number, h: number, x: number, y: number) => void
+  onDragMove: (x: number, y: number) => void
 }) {
   const [img] = useImage(clip.src, 'anonymous')
   const shapeRef = useRef<Konva.Image>(null)
@@ -41,7 +53,30 @@ function ClipImage({ clip, interpolated, isSelected, onSelect, onDragEnd, onTran
         draggable
         onClick={onSelect}
         onTap={onSelect}
-        onDragEnd={(e) => onDragEnd(e.target.x(), e.target.y())}
+        onDragMove={(e) => {
+          const node = e.target
+          const sx = snapValue(node.x(), SNAP_LINES_X, SNAP_THRESHOLD)
+          const sy = snapValue(node.y(), SNAP_LINES_Y, SNAP_THRESHOLD)
+          const cx = node.x() + node.width() / 2
+          const cy = node.y() + node.height() / 2
+          const scx = snapValue(cx, [960], SNAP_THRESHOLD)
+          const scy = snapValue(cy, [540], SNAP_THRESHOLD)
+
+          let finalX = sx.target !== null ? sx.snapped : node.x()
+          let finalY = sy.target !== null ? sy.snapped : node.y()
+          if (scx.target !== null) finalX = 960 - node.width() / 2
+          if (scy.target !== null) finalY = 540 - node.height() / 2
+
+          if (finalX !== node.x() || finalY !== node.y()) {
+            node.x(finalX)
+            node.y(finalY)
+          }
+          onDragMove(node.x(), node.y())
+        }}
+        onDragEnd={(e) => {
+          onDragEnd(e.target.x(), e.target.y())
+          onDragMove(-Infinity, -Infinity)
+        }}
         onTransformEnd={() => {
           const node = shapeRef.current
           if (!node) return
@@ -105,11 +140,40 @@ function CaptionText({ clip, stageWidth, stageHeight }: {
   )
 }
 
+function GridOverlay() {
+  const lines: React.ReactNode[] = []
+  // 10% grid
+  for (let x = 192; x < 1920; x += 192) {
+    const isThird = x === 640 || x === 1280
+    lines.push(<Line key={`gx${x}`} points={[x, 0, x, 1080]} stroke={isThird ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.1)'} strokeWidth={1} listening={false} />)
+  }
+  for (let y = 108; y < 1080; y += 108) {
+    const isThird = y === 360 || y === 720
+    lines.push(<Line key={`gy${y}`} points={[0, y, 1920, y]} stroke={isThird ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.1)'} strokeWidth={1} listening={false} />)
+  }
+  // Center crosshair
+  lines.push(<Line key="cx" points={[960, 0, 960, 1080]} stroke="#7C3AED" strokeWidth={1} opacity={0.5} listening={false} />)
+  lines.push(<Line key="cy" points={[0, 540, 1920, 540]} stroke="#7C3AED" strokeWidth={1} opacity={0.5} listening={false} />)
+  return <>{lines}</>
+}
+
+function SnapGuides({ guideX, guideY }: { guideX: number | null; guideY: number | null }) {
+  return (
+    <>
+      {guideX !== null && <Line points={[guideX, 0, guideX, 1080]} stroke="#7C3AED" strokeWidth={1} dash={[6, 3]} listening={false} />}
+      {guideY !== null && <Line points={[0, guideY, 1920, guideY]} stroke="#7C3AED" strokeWidth={1} dash={[6, 3]} listening={false} />}
+    </>
+  )
+}
+
 export function PreviewCanvas() {
   const { clips, playheadTime, selectedClipId, selectClip, updateClipProps, removeClip, hiddenTracks } = useTimeline()
   const containerRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ w: 640, h: 360 })
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; clipId: string } | null>(null)
+  const [showGrid, setShowGrid] = useState(false)
+  const [guideX, setGuideX] = useState<number | null>(null)
+  const [guideY, setGuideY] = useState<number | null>(null)
 
   useEffect(() => {
     const el = containerRef.current
@@ -168,45 +232,90 @@ export function PreviewCanvas() {
     setContextMenu(null)
   }
 
+  const handleDragMove = useCallback((x: number, y: number) => {
+    if (x === -Infinity) { setGuideX(null); setGuideY(null); return }
+    const sx = snapValue(x, SNAP_LINES_X, SNAP_THRESHOLD)
+    const sy = snapValue(y, SNAP_LINES_Y, SNAP_THRESHOLD)
+    setGuideX(sx.target)
+    setGuideY(sy.target)
+  }, [])
+
   return (
-    <div ref={containerRef} className="relative flex h-full items-center justify-center bg-[oklch(0.1_0.005_285)]">
-      <Stage
-        width={size.w}
-        height={size.h}
-        scaleX={scaleX}
-        scaleY={scaleY}
-        className="rounded border border-border/50"
-        style={{ background: '#000' }}
-        onClick={handleStageClick}
-        onContextMenu={handleContextMenu}
-      >
-        <Layer>
-          <Rect x={0} y={0} width={1920} height={1080} fill="#000" listening={false} />
-          {imageClips.map((clip) => {
-            const interp = interpolateClip(clip, playheadTime)
-            return (
-              <ClipImage
-                key={clip.id}
-                clip={clip}
-                interpolated={interp}
-                isSelected={selectedClipId === clip.id}
-                onSelect={() => selectClip(clip.id)}
-                onDragEnd={(x, y) => updateClipProps(clip.id, { x, y })}
-                onTransformEnd={(w, h, x, y) => updateClipProps(clip.id, { width: w, height: h, x, y })}
-              />
-            )
-          })}
-          {captionClips.map((clip) => (
-            <CaptionText key={clip.id} clip={clip} stageWidth={1920} stageHeight={1080} />
-          ))}
-          {imageClips.length === 0 && captionClips.length === 0 && (
-            <>
-              <Text x={960} y={520} text="No media" fontSize={28} fill="#666" align="center" offsetX={40} listening={false} />
-              <Text x={960} y={555} text="Drop assets onto the timeline" fontSize={20} fill="#444" align="center" offsetX={120} listening={false} />
-            </>
+    <div ref={containerRef} className="relative flex h-full flex-col bg-[oklch(0.1_0.005_285)]">
+      {/* Canvas toolbar */}
+      <div className="flex h-7 shrink-0 items-center gap-2 border-b border-border/30 px-3">
+        <button
+          onClick={() => setShowGrid((g) => !g)}
+          className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-medium transition-colors ${
+            showGrid ? 'bg-primary/20 text-primary' : 'bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground'
+          }`}
+          title="Toggle grid overlay"
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1" className="shrink-0">
+            <line x1="3.3" y1="0" x2="3.3" y2="10" /><line x1="6.6" y1="0" x2="6.6" y2="10" />
+            <line x1="0" y1="3.3" x2="10" y2="3.3" /><line x1="0" y1="6.6" x2="10" y2="6.6" />
+          </svg>
+          Grid
+        </button>
+      </div>
+
+      {/* Stage */}
+      <div className="flex min-h-0 flex-1 items-center justify-center">
+        <Stage
+          width={size.w}
+          height={size.h}
+          scaleX={scaleX}
+          scaleY={scaleY}
+          className="rounded border border-border/50"
+          style={{ background: '#000' }}
+          onClick={handleStageClick}
+          onContextMenu={handleContextMenu}
+        >
+          <Layer>
+            <Rect x={0} y={0} width={1920} height={1080} fill="#000" listening={false} />
+            {imageClips.map((clip) => {
+              const interp = interpolateClip(clip, playheadTime)
+              return (
+                <ClipImage
+                  key={clip.id}
+                  clip={clip}
+                  interpolated={interp}
+                  isSelected={selectedClipId === clip.id}
+                  onSelect={() => selectClip(clip.id)}
+                  onDragEnd={(x, y) => updateClipProps(clip.id, { x, y })}
+                  onTransformEnd={(w, h, x, y) => updateClipProps(clip.id, { width: w, height: h, x, y })}
+                  onDragMove={handleDragMove}
+                />
+              )
+            })}
+          </Layer>
+
+          {/* Grid overlay layer */}
+          {showGrid && (
+            <Layer listening={false}>
+              <GridOverlay />
+            </Layer>
           )}
-        </Layer>
-      </Stage>
+
+          {/* Snap guides layer */}
+          <Layer listening={false}>
+            <SnapGuides guideX={guideX} guideY={guideY} />
+          </Layer>
+
+          {/* Captions layer (on top) */}
+          <Layer listening={false}>
+            {captionClips.map((clip) => (
+              <CaptionText key={clip.id} clip={clip} stageWidth={1920} stageHeight={1080} />
+            ))}
+            {imageClips.length === 0 && captionClips.length === 0 && (
+              <>
+                <Text x={960} y={520} text="No media" fontSize={28} fill="#666" align="center" offsetX={40} listening={false} />
+                <Text x={960} y={555} text="Drop assets onto the timeline" fontSize={20} fill="#444" align="center" offsetX={120} listening={false} />
+              </>
+            )}
+          </Layer>
+        </Stage>
+      </div>
 
       {contextMenu && (
         <>

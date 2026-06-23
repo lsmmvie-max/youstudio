@@ -2,154 +2,146 @@ import { useState } from 'react'
 import { useTimeline, type Keyframe, type TimelineClip } from './timeline-context.tsx'
 import { Button } from '#/components/ui/button.tsx'
 
-const PRESETS = [
-  { label: 'Ken Burns In', desc: 'Slow zoom in', fn: (c: TimelineClip): Keyframe[] => [
+const PRESETS: { label: string; icon: string; desc: string; fn: (c: TimelineClip) => Keyframe[] }[] = [
+  { label: 'Ken Burns In', icon: '+', desc: 'Slow zoom in', fn: (c) => [
     { time: 0, x: c.x, y: c.y, width: c.width, height: c.height, opacity: c.opacity, rotation: c.rotation },
     { time: c.duration, x: c.x - c.width * 0.1, y: c.y - c.height * 0.1, width: c.width * 1.2, height: c.height * 1.2, opacity: c.opacity, rotation: c.rotation },
   ] },
-  { label: 'Ken Burns Out', desc: 'Slow zoom out', fn: (c: TimelineClip): Keyframe[] => [
+  { label: 'Ken Burns Out', icon: '-', desc: 'Slow zoom out', fn: (c) => [
     { time: 0, x: c.x - c.width * 0.1, y: c.y - c.height * 0.1, width: c.width * 1.2, height: c.height * 1.2, opacity: c.opacity, rotation: c.rotation },
     { time: c.duration, x: c.x, y: c.y, width: c.width, height: c.height, opacity: c.opacity, rotation: c.rotation },
   ] },
-  { label: 'Slide In Left', desc: 'Enter from left', fn: (c: TimelineClip): Keyframe[] => [
+  { label: 'Slide Left', icon: '→', desc: 'Enter from left', fn: (c) => [
     { time: 0, x: -c.width, y: c.y, width: c.width, height: c.height, opacity: c.opacity, rotation: c.rotation },
     { time: 0.5, x: c.x, y: c.y, width: c.width, height: c.height, opacity: c.opacity, rotation: c.rotation },
   ] },
-  { label: 'Slide In Right', desc: 'Enter from right', fn: (c: TimelineClip): Keyframe[] => [
+  { label: 'Slide Right', icon: '←', desc: 'Enter from right', fn: (c) => [
     { time: 0, x: 1920, y: c.y, width: c.width, height: c.height, opacity: c.opacity, rotation: c.rotation },
     { time: 0.5, x: c.x, y: c.y, width: c.width, height: c.height, opacity: c.opacity, rotation: c.rotation },
   ] },
-  { label: 'Fade In', desc: '0→100% opacity', fn: (c: TimelineClip): Keyframe[] => [
+  { label: 'Fade In', icon: '◐', desc: '0 to 100% opacity', fn: (c) => [
     { time: 0, x: c.x, y: c.y, width: c.width, height: c.height, opacity: 0, rotation: c.rotation },
     { time: 0.5, x: c.x, y: c.y, width: c.width, height: c.height, opacity: 100, rotation: c.rotation },
   ] },
-  { label: 'Fade Out', desc: '100→0% opacity', fn: (c: TimelineClip): Keyframe[] => [
+  { label: 'Fade Out', icon: '◑', desc: '100 to 0% opacity', fn: (c) => [
     { time: Math.max(0, c.duration - 0.5), x: c.x, y: c.y, width: c.width, height: c.height, opacity: 100, rotation: c.rotation },
     { time: c.duration, x: c.x, y: c.y, width: c.width, height: c.height, opacity: 0, rotation: c.rotation },
   ] },
-] as const
+]
+
+function describeKf(kf: Keyframe): string {
+  const parts: string[] = []
+  if (kf.x !== 0 || kf.y !== 0) parts.push(`pos:${Math.round(kf.x)},${Math.round(kf.y)}`)
+  const zoom = Math.round((kf.width / 1920) * 100)
+  if (zoom !== 100) parts.push(`zoom:${zoom}%`)
+  if (kf.opacity !== 100) parts.push(`op:${Math.round(kf.opacity)}%`)
+  if (kf.rotation !== 0) parts.push(`rot:${Math.round(kf.rotation)}`)
+  return parts.length > 0 ? parts.join(' ') : 'default'
+}
 
 export function KeyframeEditor({ clip }: { clip: TimelineClip }) {
   const { playheadTime, updateClipKeyframe, removeClipKeyframe, updateClipProps } = useTimeline()
-  const [selectedKfTime, setSelectedKfTime] = useState<number | null>(null)
+  const [editingIdx, setEditingIdx] = useState<number | null>(null)
 
   const keyframes = clip.keyframes ?? []
-  const selectedKf = selectedKfTime !== null
-    ? keyframes.find((k) => Math.abs(k.time - selectedKfTime) < 0.01)
-    : null
-
   const relativeTime = Math.max(0, Math.min(clip.duration, playheadTime - clip.startTime))
 
   const addKeyframeAtPlayhead = () => {
     const kf: Keyframe = {
       time: relativeTime,
-      x: clip.x,
-      y: clip.y,
-      width: clip.width,
-      height: clip.height,
-      opacity: clip.opacity,
-      rotation: clip.rotation,
+      x: clip.x, y: clip.y,
+      width: clip.width, height: clip.height,
+      opacity: clip.opacity, rotation: clip.rotation,
     }
     updateClipKeyframe(clip.id, kf)
-    setSelectedKfTime(kf.time)
   }
 
-  const applyPreset = (presetFn: (c: TimelineClip) => Keyframe[]) => {
-    const newKfs = presetFn(clip)
-    updateClipProps(clip.id, { keyframes: newKfs })
-    setSelectedKfTime(null)
+  const applyPreset = (fn: (c: TimelineClip) => Keyframe[]) => {
+    updateClipProps(clip.id, { keyframes: fn(clip) })
+    setEditingIdx(null)
   }
 
-  const updateSelectedKf = (key: keyof Keyframe, val: string) => {
-    if (!selectedKf) return
+  const editingKf = editingIdx !== null ? keyframes[editingIdx] : null
+
+  const updateKfField = (key: keyof Keyframe, val: string) => {
+    if (!editingKf) return
     const n = parseFloat(val)
     if (isNaN(n)) return
-    updateClipKeyframe(clip.id, { ...selectedKf, [key]: n })
+    updateClipKeyframe(clip.id, { ...editingKf, [key]: n })
   }
-
-  const MINI_W = 200
-  const pxPerSec = clip.duration > 0 ? MINI_W / clip.duration : MINI_W
 
   return (
     <div className="px-3 py-2">
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">Keyframes</span>
-        <span className="text-[9px] text-muted-foreground">{keyframes.length} keys</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">Motion Presets</span>
       </div>
 
-      {/* Mini timeline */}
-      <div className="relative mb-2 h-6 w-full rounded border border-border bg-muted/30" style={{ maxWidth: MINI_W }}>
-        {/* Playhead indicator */}
-        <div
-          className="absolute top-0 h-full w-px bg-red-500/70"
-          style={{ left: relativeTime * pxPerSec }}
-        />
-        {/* Keyframe diamonds */}
-        {keyframes.map((kf) => {
-          const isActive = selectedKfTime !== null && Math.abs(kf.time - selectedKfTime) < 0.01
-          return (
-            <button
-              key={kf.time}
-              className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rotate-45 border transition-colors ${
-                isActive ? 'border-[#7C3AED] bg-[#7C3AED]' : 'border-yellow-400 bg-yellow-400/80 hover:bg-yellow-300'
-              }`}
-              style={{ left: kf.time * pxPerSec, width: 8, height: 8 }}
-              onClick={() => setSelectedKfTime(isActive ? null : kf.time)}
-              title={`t=${kf.time.toFixed(2)}s`}
-            />
-          )
-        })}
-      </div>
-
-      <div className="mb-2 flex gap-1">
-        <Button size="sm" variant="outline" className="h-6 text-[9px]" onClick={addKeyframeAtPlayhead}>
-          + Add at {relativeTime.toFixed(1)}s
-        </Button>
-        {selectedKf && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-6 text-[9px] text-destructive"
-            onClick={() => { removeClipKeyframe(clip.id, selectedKf.time); setSelectedKfTime(null) }}
-          >
-            Remove
-          </Button>
-        )}
-      </div>
-
-      {/* Selected keyframe editor */}
-      {selectedKf && (
-        <div className="mb-2 rounded border border-border bg-muted/20 p-2">
-          <p className="mb-1 text-[9px] font-bold text-muted-foreground">t = {selectedKf.time.toFixed(2)}s</p>
-          <div className="grid grid-cols-2 gap-x-2 gap-y-1">
-            {(['x', 'y', 'width', 'height', 'opacity', 'rotation'] as const).map((k) => (
-              <div key={k} className="flex items-center justify-between gap-1">
-                <span className="text-[9px] text-muted-foreground">{k}</span>
-                <input
-                  type="number"
-                  value={Math.round(selectedKf[k])}
-                  onChange={(e) => updateSelectedKf(k, e.target.value)}
-                  className="w-14 rounded border border-border bg-background px-1 py-0.5 text-right text-[9px] text-foreground outline-none focus:border-primary/50"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Presets */}
-      <div className="flex flex-wrap gap-1">
+      {/* 2x3 preset grid */}
+      <div className="mb-3 grid grid-cols-2 gap-1.5">
         {PRESETS.map((p) => (
           <button
             key={p.label}
             onClick={() => applyPreset(p.fn)}
-            className="rounded border border-border bg-muted/30 px-1.5 py-0.5 text-[8px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            title={p.desc}
+            className="flex flex-col items-center gap-0.5 rounded-md border border-border bg-muted/30 px-2 py-1.5 transition-colors hover:border-primary/50 hover:bg-muted"
           >
-            {p.label}
+            <span className="text-sm leading-none">{p.icon}</span>
+            <span className="text-[8px] font-bold text-foreground">{p.label}</span>
+            <span className="text-[7px] text-muted-foreground">{p.desc}</span>
           </button>
         ))}
       </div>
+
+      {/* Add keyframe button */}
+      <Button size="sm" variant="outline" className="mb-2 w-full text-[10px]" onClick={addKeyframeAtPlayhead}>
+        + Keyframe at {relativeTime.toFixed(1)}s
+      </Button>
+
+      {/* Keyframe list */}
+      {keyframes.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+            Keyframes ({keyframes.length})
+          </span>
+          {keyframes.map((kf, i) => {
+            const isEditing = editingIdx === i
+            return (
+              <div key={i} className={`rounded border p-1.5 ${isEditing ? 'border-primary/50 bg-primary/5' : 'border-border bg-muted/20'}`}>
+                <div className="flex items-center justify-between">
+                  <button
+                    onClick={() => setEditingIdx(isEditing ? null : i)}
+                    className="flex items-center gap-1.5 text-left"
+                  >
+                    <span className="inline-block size-2 rotate-45 bg-yellow-400" />
+                    <span className="font-mono text-[9px] font-bold text-foreground">{kf.time.toFixed(2)}s</span>
+                    <span className="text-[8px] text-muted-foreground">{describeKf(kf)}</span>
+                  </button>
+                  <button
+                    onClick={() => { removeClipKeyframe(clip.id, kf.time); setEditingIdx(null) }}
+                    className="text-[9px] text-destructive hover:underline"
+                  >
+                    Del
+                  </button>
+                </div>
+                {isEditing && (
+                  <div className="mt-1.5 grid grid-cols-2 gap-x-2 gap-y-1">
+                    {(['time', 'x', 'y', 'width', 'height', 'opacity', 'rotation'] as const).map((k) => (
+                      <div key={k} className="flex items-center justify-between gap-1">
+                        <span className="text-[8px] text-muted-foreground">{k}</span>
+                        <input
+                          type="number"
+                          value={Math.round(kf[k] * 100) / 100}
+                          onChange={(e) => updateKfField(k, e.target.value)}
+                          className="w-14 rounded border border-border bg-background px-1 py-0.5 text-right text-[9px] text-foreground outline-none focus:border-primary/50"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

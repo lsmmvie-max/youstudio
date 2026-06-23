@@ -114,10 +114,28 @@ export function interpolateClip(clip: TimelineClip, playheadTime: number) {
 
 let nextId = 1
 
+function loadClips(): TimelineClip[] {
+  try {
+    const saved = localStorage.getItem('youstudio-timeline-clips')
+    if (!saved) return []
+    const parsed = JSON.parse(saved) as TimelineClip[]
+    if (!Array.isArray(parsed)) return []
+    const maxNum = parsed.reduce((m, c) => {
+      const n = parseInt(c.id.replace('clip-', ''), 10)
+      return isNaN(n) ? m : Math.max(m, n)
+    }, 0)
+    if (maxNum >= nextId) nextId = maxNum + 1
+    return parsed
+  } catch { return [] }
+}
+
 export function TimelineProvider({ children }: { children: ReactNode }) {
-  const [clips, setClips] = useState<TimelineClip[]>([])
-  const [playheadTime, setPlayheadTime] = useState(0)
-  const [selectedClipId, setSelectedClipId] = useState<string | null>(null)
+  const [clips, setClips] = useState<TimelineClip[]>(loadClips)
+  const [playheadTime, setPlayheadTime] = useState(() => {
+    const saved = localStorage.getItem('youstudio-playhead')
+    return saved ? Number(saved) || 0 : 0
+  })
+  const [selectedClipId, setSelectedClipId] = useState<string | null>(() => localStorage.getItem('youstudio-selected-clip'))
   const [isPlaying, setIsPlaying] = useState(false)
   const [hiddenTracks, setHiddenTracks] = useState<Set<number>>(new Set())
   const [defaultClipDuration, setDefaultClipDuration] = useState(() => {
@@ -183,6 +201,24 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     localStorage.setItem('youstudio-default-clip-duration', String(defaultClipDuration))
   }, [defaultClipDuration])
+
+  // Persist timeline state to localStorage
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      localStorage.setItem('youstudio-timeline-clips', JSON.stringify(clips))
+    }, 300)
+  }, [clips])
+
+  useEffect(() => {
+    localStorage.setItem('youstudio-playhead', String(playheadTime))
+  }, [playheadTime])
+
+  useEffect(() => {
+    if (selectedClipId) localStorage.setItem('youstudio-selected-clip', selectedClipId)
+    else localStorage.removeItem('youstudio-selected-clip')
+  }, [selectedClipId])
 
   useEffect(() => {
     if (!isPlaying) {
