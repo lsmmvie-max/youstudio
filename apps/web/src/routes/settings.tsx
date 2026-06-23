@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Button } from '#/components/ui/button.tsx'
 import { Input } from '#/components/ui/input.tsx'
-import { ScrollArea } from '#/components/ui/scroll-area.tsx'
 
 export const Route = createFileRoute('/settings')({ component: Settings })
 
@@ -23,6 +22,7 @@ interface ChannelProfile {
   contentStyle: string
   targetAudienceAge: string
   language: string
+  storyStylePrompt?: string
 }
 
 const EMPTY_KEYS: KeysData = {
@@ -40,6 +40,7 @@ const EMPTY_PROFILE: ChannelProfile = {
   contentStyle: 'Storytelling',
   targetAudienceAge: '',
   language: 'Portuguese',
+  storyStylePrompt: '',
 }
 
 function Settings() {
@@ -147,7 +148,7 @@ function Settings() {
           ))}
         </div>
 
-        <ScrollArea className="flex-1">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto max-w-3xl p-6">
             {tab === 'keys' && (
               <div className="space-y-8">
@@ -161,9 +162,12 @@ function Settings() {
                   <span className="mb-4 block text-xs font-bold uppercase tracking-widest text-muted-foreground">Cloudflare</span>
                   <div className="mb-4">
                     <label className="mb-1 block text-[10px] font-semibold text-muted-foreground/70">Account ID</label>
-                    <KeyInput idx={-1} value={keys.cloudflare.accountId} provider="cloudflare" label="Account"
-                      onChange={(v) => setKeys({ ...keys, cloudflare: { ...keys.cloudflare, accountId: v } })}
-                      onTest={() => {}} />
+                    <Input
+                      value={keys.cloudflare.accountId}
+                      onChange={(e) => setKeys({ ...keys, cloudflare: { ...keys.cloudflare, accountId: e.target.value } })}
+                      className="font-mono text-xs"
+                      placeholder="Cloudflare Account ID"
+                    />
                   </div>
                   {keys.cloudflare.tokens.map((tok, i) => (
                     <KeyInput key={i} idx={i} value={tok} provider="cloudflare" label="Cloudflare"
@@ -213,6 +217,17 @@ function Settings() {
                   </div>
                   <Field label="Target Audience Age" value={profile.targetAudienceAge}
                     onChange={(v) => setProfile({ ...profile, targetAudienceAge: v })} placeholder="e.g. 13-25" />
+                  <div>
+                    <label className="mb-1 block text-[10px] font-semibold text-muted-foreground/70">Story Style Prompt</label>
+                    <p className="mb-1 text-[9px] text-muted-foreground/60">Describe the tone, humor style, and type of stories you want. This is used by the Overnight Brain to generate episodes.</p>
+                    <textarea
+                      value={profile.storyStylePrompt ?? ''}
+                      onChange={(e) => setProfile({ ...profile, storyStylePrompt: e.target.value })}
+                      placeholder="e.g. Dark comedy with relatable teen situations, dry humor, unexpected plot twists, references to internet culture, slightly chaotic energy that Gen Z would find funny..."
+                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-primary/50"
+                      rows={3}
+                    />
+                  </div>
                   <div>
                     <label className="mb-1 block text-[10px] font-semibold text-muted-foreground/70">Language</label>
                     <select value={profile.language}
@@ -286,7 +301,7 @@ function Settings() {
               </div>
             )}
           </div>
-        </ScrollArea>
+        </div>
       </div>
     </div>
   )

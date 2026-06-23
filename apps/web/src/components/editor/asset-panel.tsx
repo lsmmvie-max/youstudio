@@ -1,6 +1,25 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '#/components/ui/tabs.tsx'
-import { ScrollArea } from '#/components/ui/scroll-area.tsx'
+
+const API = 'http://localhost:3737'
+
+interface Asset {
+  date: string
+  filename: string
+  url: string
+  size: number
+}
+
+interface Character {
+  name: string
+  variants: { filename: string; url: string }[]
+  variantCount: number
+}
+
+interface BgFile {
+  filename: string
+  url: string
+}
 
 const FOLDERS = [
   { id: 'assets', label: 'Assets' },
@@ -10,38 +29,37 @@ const FOLDERS = [
 
 type FolderTab = (typeof FOLDERS)[number]['id']
 
-function PlaceholderGrid({ folder, search }: { folder: FolderTab; search: string }) {
-  const items = Array.from({ length: 6 }, (_, i) => `${folder}-${i + 1}`)
-  const filtered = search
-    ? items.filter((id) => id.toLowerCase().includes(search.toLowerCase()))
-    : items
-
-  if (filtered.length === 0) {
-    return (
-      <div className="flex items-center justify-center p-6">
-        <span className="text-xs text-muted-foreground">No results</span>
-      </div>
-    )
-  }
-
-  return (
-    <div className="grid grid-cols-2 gap-2 p-2">
-      {filtered.map((id) => (
-        <div
-          key={id}
-          className="group flex aspect-video cursor-pointer flex-col items-center justify-center rounded-md border border-border bg-muted/50 transition-colors hover:border-primary/50 hover:bg-muted"
-        >
-          <div className="mb-1 size-5 rounded bg-muted-foreground/20" />
-          <span className="text-[10px] text-muted-foreground group-hover:text-foreground">{id}</span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 export function AssetPanel() {
   const [tab, setTab] = useState<FolderTab>('assets')
   const [search, setSearch] = useState('')
+  const [assets, setAssets] = useState<Asset[]>([])
+  const [characters, setCharacters] = useState<Character[]>([])
+  const [backgrounds, setBackgrounds] = useState<BgFile[]>([])
+
+  useEffect(() => {
+    fetch(`${API}/forge/assets`)
+      .then((r) => r.json() as Promise<{ assets: Asset[] }>)
+      .then((d) => setAssets(d.assets))
+      .catch(() => {})
+    fetch(`${API}/forge/characters`)
+      .then((r) => r.json() as Promise<{ characters: Character[] }>)
+      .then((d) => setCharacters(d.characters))
+      .catch(() => {})
+    fetch(`${API}/forge/backgrounds`)
+      .then((r) => r.json() as Promise<{ backgrounds: BgFile[] }>)
+      .then((d) => setBackgrounds(d.backgrounds))
+      .catch(() => {})
+  }, [])
+
+  const filteredAssets = search
+    ? assets.filter((a) => a.filename.toLowerCase().includes(search.toLowerCase()))
+    : assets
+  const filteredChars = search
+    ? characters.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()))
+    : characters
+  const filteredBgs = search
+    ? backgrounds.filter((b) => b.filename.toLowerCase().includes(search.toLowerCase()))
+    : backgrounds
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -64,14 +82,108 @@ export function AssetPanel() {
             className="w-full rounded border border-border bg-background px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none"
           />
         </div>
-        <ScrollArea className="min-h-0 flex-1">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           {FOLDERS.map((f) => (
             <TabsContent key={f.id} value={f.id}>
-              <PlaceholderGrid folder={f.id} search={search} />
+              {f.id === 'assets' && <AssetsGrid assets={filteredAssets} />}
+              {f.id === 'characters' && <CharsGrid characters={filteredChars} />}
+              {f.id === 'backgrounds' && <BgsGrid backgrounds={filteredBgs} />}
             </TabsContent>
           ))}
-        </ScrollArea>
+        </div>
       </Tabs>
+    </div>
+  )
+}
+
+function AssetsGrid({ assets }: { assets: Asset[] }) {
+  if (assets.length === 0) {
+    return (
+      <div className="flex items-center justify-center p-6">
+        <span className="text-xs text-muted-foreground">No assets generated yet</span>
+      </div>
+    )
+  }
+  return (
+    <div className="grid grid-cols-2 gap-2 p-2">
+      {assets.map((a) => (
+        <div
+          key={`${a.date}-${a.filename}`}
+          className="group cursor-pointer overflow-hidden rounded-md border border-border bg-muted/50 transition-colors hover:border-primary/50"
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.setData('text/plain', `${API}${a.url}`)
+          }}
+        >
+          <img src={`${API}${a.url}`} alt={a.filename} className="aspect-video w-full object-cover" loading="lazy" />
+          <div className="px-1.5 py-1">
+            <span className="block truncate text-[9px] text-muted-foreground group-hover:text-foreground">{a.filename}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function CharsGrid({ characters }: { characters: Character[] }) {
+  if (characters.length === 0) {
+    return (
+      <div className="flex items-center justify-center p-6">
+        <span className="text-xs text-muted-foreground">No characters yet</span>
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-2 p-2">
+      {characters.map((c) => (
+        <div key={c.name} className="rounded-md border border-border bg-muted/50 p-2">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="truncate text-[10px] font-medium text-foreground">{c.name}</span>
+            <span className="text-[9px] text-muted-foreground">{c.variantCount}</span>
+          </div>
+          {c.variants.length > 0 && (
+            <div className="flex gap-1 overflow-x-auto">
+              {c.variants.slice(0, 3).map((v) => (
+                <img key={v.filename} src={`${API}${v.url}`} alt={v.filename} className="size-10 shrink-0 rounded border border-border object-cover" loading="lazy" />
+              ))}
+              {c.variants.length > 3 && (
+                <div className="flex size-10 shrink-0 items-center justify-center rounded border border-border bg-muted text-[9px] text-muted-foreground">
+                  +{c.variants.length - 3}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function BgsGrid({ backgrounds }: { backgrounds: BgFile[] }) {
+  if (backgrounds.length === 0) {
+    return (
+      <div className="flex items-center justify-center p-6">
+        <span className="text-xs text-muted-foreground">No backgrounds yet</span>
+      </div>
+    )
+  }
+  return (
+    <div className="grid grid-cols-2 gap-2 p-2">
+      {backgrounds.map((b) => (
+        <div
+          key={b.filename}
+          className="group cursor-pointer overflow-hidden rounded-md border border-border bg-muted/50 transition-colors hover:border-primary/50"
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.setData('text/plain', `${API}${b.url}`)
+          }}
+        >
+          <img src={`${API}${b.url}`} alt={b.filename} className="aspect-video w-full object-cover" loading="lazy" />
+          <div className="px-1.5 py-1">
+            <span className="block truncate text-[9px] text-muted-foreground group-hover:text-foreground">{b.filename}</span>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

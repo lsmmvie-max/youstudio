@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Button } from '#/components/ui/button.tsx'
 import { Input } from '#/components/ui/input.tsx'
-import { ScrollArea } from '#/components/ui/scroll-area.tsx'
 import { marked } from 'marked'
 
 export const Route = createFileRoute('/script')({ component: ScriptStudio })
@@ -118,7 +117,7 @@ function ScriptStudio() {
         <div className="flex flex-1 overflow-hidden">
           {/* Left sidebar — Story Bank */}
           <div className="flex w-[200px] shrink-0 flex-col border-r border-border bg-muted/20">
-            <ScrollArea className="flex-1">
+            <div className="min-h-0 flex-1 overflow-y-auto">
               <div className="p-3">
                 {/* Editing Script Blocks */}
                 <button
@@ -185,7 +184,7 @@ function ScriptStudio() {
                   </div>
                 )}
               </div>
-            </ScrollArea>
+            </div>
             <div className="border-t border-border p-2">
               <form onSubmit={(e) => { e.preventDefault(); addStoryIdea() }} className="flex gap-1">
                 <Input
@@ -247,7 +246,7 @@ function ScriptStudio() {
             <div className="border-b border-border px-3 py-2">
               <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Editing Script</span>
             </div>
-            <ScrollArea className="flex-1">
+            <div className="min-h-0 flex-1 overflow-y-auto">
               <div className="flex flex-col gap-2 p-3">
                 {data.editingScript.map((block, i) => (
                   <button
@@ -277,7 +276,7 @@ function ScriptStudio() {
                   </button>
                 ))}
               </div>
-            </ScrollArea>
+            </div>
           </div>
         </div>
       )}

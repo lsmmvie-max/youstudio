@@ -1,10 +1,15 @@
 import { Router, type Request, type Response } from "express";
+import multer from "multer";
 import fs from "fs";
 import path from "path";
 import { generateImage } from "./image-router.js";
 
 const CHARACTERS_DIR = "C:\\YouStudio\\characters";
 const ASSETS_DIR = "C:\\YouStudio\\assets";
+const REFERENCES_DIR = "C:\\YouStudio\\references";
+const BACKGROUNDS_DIR = "C:\\YouStudio\\backgrounds";
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 const router = Router();
 
@@ -38,6 +43,23 @@ router.get("/characters", (_req: Request, res: Response) => {
     });
 
   res.json({ characters: chars });
+});
+
+router.post("/characters", upload.single("image"), (req: Request, res: Response) => {
+  const name = String(req.body?.name ?? "").trim();
+  if (!name) {
+    res.status(400).json({ error: "name is required" });
+    return;
+  }
+  if (!req.file) {
+    res.status(400).json({ error: "image is required" });
+    return;
+  }
+  const charDir = path.join(CHARACTERS_DIR, name);
+  fs.mkdirSync(charDir, { recursive: true });
+  const outPath = path.join(charDir, "reference.png");
+  fs.writeFileSync(outPath, req.file.buffer);
+  res.json({ ok: true, path: outPath });
 });
 
 router.get("/character-image/:name/:file", (req: Request, res: Response) => {
@@ -118,11 +140,71 @@ router.get("/image/:date/:filename", (req: Request, res: Response) => {
   res.sendFile(fp);
 });
 
+router.get("/references", (_req: Request, res: Response) => {
+  if (!fs.existsSync(REFERENCES_DIR)) {
+    res.json({ references: [] });
+    return;
+  }
+  const files = fs.readdirSync(REFERENCES_DIR).filter((f) => /\.(png|jpg|jpeg|webp)$/i.test(f));
+  res.json({
+    references: files.map((f) => ({
+      filename: f,
+      url: `/forge/reference-image/${f}`,
+    })),
+  });
+});
+
+router.post("/references", upload.single("image"), (req: Request, res: Response) => {
+  if (!req.file) {
+    res.status(400).json({ error: "image is required" });
+    return;
+  }
+  fs.mkdirSync(REFERENCES_DIR, { recursive: true });
+  const outPath = path.join(REFERENCES_DIR, req.file.originalname);
+  fs.writeFileSync(outPath, req.file.buffer);
+  res.json({ ok: true, filename: req.file.originalname, url: `/forge/reference-image/${req.file.originalname}` });
+});
+
+router.get("/reference-image/:filename", (req: Request, res: Response) => {
+  const filename = String(req.params.filename);
+  const fp = path.join(REFERENCES_DIR, filename);
+  if (!fs.existsSync(fp)) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  res.sendFile(fp);
+});
+
+router.get("/backgrounds", (_req: Request, res: Response) => {
+  if (!fs.existsSync(BACKGROUNDS_DIR)) {
+    res.json({ backgrounds: [] });
+    return;
+  }
+  const files = fs.readdirSync(BACKGROUNDS_DIR).filter((f) => /\.(png|jpg|jpeg|webp)$/i.test(f));
+  res.json({
+    backgrounds: files.map((f) => ({
+      filename: f,
+      url: `/forge/background-image/${f}`,
+    })),
+  });
+});
+
+router.get("/background-image/:filename", (req: Request, res: Response) => {
+  const filename = String(req.params.filename);
+  const fp = path.join(BACKGROUNDS_DIR, filename);
+  if (!fs.existsSync(fp)) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  res.sendFile(fp);
+});
+
 router.post("/generate", async (req: Request, res: Response) => {
-  const { prompt, style, filename } = req.body as {
+  const { prompt, style, filename, references } = req.body as {
     prompt?: string;
     style?: "LIGHT" | "INTENSE";
     filename?: string;
+    references?: string[];
   };
 
   if (!prompt) {

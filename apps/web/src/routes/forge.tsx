@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Button } from '#/components/ui/button.tsx'
-import { ScrollArea } from '#/components/ui/scroll-area.tsx'
 
 export const Route = createFileRoute('/forge')({ component: AssetForge })
 
@@ -44,6 +43,9 @@ function AssetForge() {
   const [queue, setQueue] = useState<QueueItem[]>([])
   const [batchRunning, setBatchRunning] = useState(false)
   const batchAbortRef = useRef(false)
+  const [references, setReferences] = useState<{ filename: string; url: string }[]>([])
+  const charInputRef = useRef<HTMLInputElement>(null)
+  const refInputRef = useRef<HTMLInputElement>(null)
 
   const fetchCharacters = useCallback(() => {
     fetch(`${API}/forge/characters`)
@@ -59,10 +61,18 @@ function AssetForge() {
       .catch(() => {})
   }, [])
 
+  const fetchReferences = useCallback(() => {
+    fetch(`${API}/forge/references`)
+      .then((r) => r.json() as Promise<{ references: { filename: string; url: string }[] }>)
+      .then((d) => setReferences(d.references))
+      .catch(() => {})
+  }, [])
+
   useEffect(() => {
     fetchCharacters()
     fetchAssets()
-  }, [fetchCharacters, fetchAssets])
+    fetchReferences()
+  }, [fetchCharacters, fetchAssets, fetchReferences])
 
   const autoloadRef = useRef(false)
   useEffect(() => {
@@ -75,6 +85,41 @@ function AssetForge() {
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const handleAddCharacter = () => {
+    charInputRef.current?.click()
+  }
+
+  const onCharacterFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const name = window.prompt('Character name:')
+    if (!name?.trim()) return
+    const form = new FormData()
+    form.append('image', file)
+    form.append('name', name.trim())
+    try {
+      await fetch(`${API}/forge/characters`, { method: 'POST', body: form })
+      fetchCharacters()
+    } catch {}
+    e.target.value = ''
+  }
+
+  const handleAddReference = () => {
+    refInputRef.current?.click()
+  }
+
+  const onReferenceFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const form = new FormData()
+    form.append('image', file)
+    try {
+      await fetch(`${API}/forge/references`, { method: 'POST', body: form })
+      fetchReferences()
+    } catch {}
+    e.target.value = ''
+  }
+
   const generateSingle = async () => {
     if (!prompt.trim()) return
     setGenerating(true)
@@ -83,7 +128,7 @@ function AssetForge() {
       const res = await fetch(`${API}/forge/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: prompt.trim(), style }),
+        body: JSON.stringify({ prompt: prompt.trim(), style, references: references.map((r) => r.filename) }),
       })
       if (!res.ok) throw new Error()
       const data = (await res.json()) as { url: string }
@@ -198,7 +243,7 @@ function AssetForge() {
           <div className="shrink-0 border-b border-border px-3 py-2">
             <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Characters</span>
           </div>
-          <ScrollArea className="flex-1">
+          <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="flex flex-col gap-2 p-3">
               {characters.length === 0 && (
                 <p className="py-6 text-center text-[10px] text-muted-foreground/50">
@@ -231,9 +276,10 @@ function AssetForge() {
                 </div>
               ))}
             </div>
-          </ScrollArea>
+          </div>
           <div className="shrink-0 border-t border-border p-2">
-            <Button size="sm" variant="outline" className="w-full text-[10px]" disabled>
+            <input ref={charInputRef} type="file" accept="image/png" className="hidden" onChange={onCharacterFileSelected} />
+            <Button size="sm" variant="outline" className="w-full text-[10px]" onClick={handleAddCharacter}>
               Add Character
             </Button>
           </div>
@@ -241,6 +287,34 @@ function AssetForge() {
 
         {/* Center — Scene Generator + Batch Queue */}
         <div className="flex min-h-0 flex-1 flex-col">
+          {/* Reference Images */}
+          <div className="shrink-0 border-b border-border px-4 py-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Reference Images</span>
+              <div>
+                <input ref={refInputRef} type="file" accept="image/png" className="hidden" onChange={onReferenceFileSelected} />
+                <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={handleAddReference}>
+                  Add Reference
+                </Button>
+              </div>
+            </div>
+            {references.length === 0 ? (
+              <p className="text-[10px] text-muted-foreground/50">No reference images. Upload PNGs to guide image generation.</p>
+            ) : (
+              <div className="flex gap-2 overflow-x-auto">
+                {references.map((ref) => (
+                  <img
+                    key={ref.filename}
+                    src={`${API}${ref.url}`}
+                    alt={ref.filename}
+                    className="h-16 w-24 shrink-0 rounded border border-border object-cover"
+                    title={ref.filename}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Scene Generator (top ~40%) */}
           <div className="flex shrink-0 flex-col border-b border-border p-4" style={{ height: '40%' }}>
             <div className="mb-2 flex items-center justify-between">

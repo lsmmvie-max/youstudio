@@ -1,7 +1,23 @@
+import { useState, useEffect, useRef } from 'react'
 import { Link } from '@tanstack/react-router'
 import { Button } from '#/components/ui/button.tsx'
 
 export function TopBar() {
+  const [name, setName] = useState(() => localStorage.getItem('youstudio-project-name') || 'Untitled Project')
+  const [editing, setEditing] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus()
+  }, [editing])
+
+  const save = () => {
+    setEditing(false)
+    const trimmed = name.trim() || 'Untitled Project'
+    setName(trimmed)
+    localStorage.setItem('youstudio-project-name', trimmed)
+  }
+
   return (
     <div className="flex h-12 shrink-0 items-center justify-between border-b border-primary/30 bg-background px-4">
       <div className="flex items-center gap-2">
@@ -12,7 +28,23 @@ export function TopBar() {
       </div>
 
       <div className="flex items-center gap-1.5">
-        <span className="text-xs text-muted-foreground">Untitled Project</span>
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={save}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') save()
+              if (e.key === 'Escape') { setName(localStorage.getItem('youstudio-project-name') || 'Untitled Project'); setEditing(false) }
+            }}
+            className="rounded border border-primary/50 bg-background px-2 py-0.5 text-center text-xs text-foreground outline-none"
+          />
+        ) : (
+          <button onClick={() => setEditing(true)} className="cursor-text text-xs text-muted-foreground transition-colors hover:text-foreground">
+            {name}
+          </button>
+        )}
       </div>
 
       <div className="flex items-center gap-2">

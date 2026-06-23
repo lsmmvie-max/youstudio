@@ -85,6 +85,17 @@ function getNextStoryIdea(): string | null {
   }
 }
 
+const PROFILE_PATH = "C:\\YouStudio\\channel-profile.json";
+
+function getChannelProfile(): { storyStylePrompt?: string } | null {
+  try {
+    if (!fs.existsSync(PROFILE_PATH)) return null;
+    return JSON.parse(fs.readFileSync(PROFILE_PATH, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
 const LEE_ANIMATIONS_SYSTEM = `You are a creative writer for "Lee Animations", a YouTube storytelling channel.
 
 Style guide:
@@ -118,10 +129,16 @@ export async function runOvernightBrain(
   log("concept", "Finding next story idea...");
   let concept = getNextStoryIdea();
 
+  const profile = getChannelProfile();
+  let systemPrompt = LEE_ANIMATIONS_SYSTEM;
+  if (profile?.storyStylePrompt) {
+    systemPrompt += `\n\nAdditional story style guidance from the creator:\n${profile.storyStylePrompt}`;
+  }
+
   if (!concept) {
     log("concept", "No queued ideas — generating one with AI...");
     concept = await aiChat(
-      LEE_ANIMATIONS_SYSTEM,
+      systemPrompt,
       `Generate a single story concept for a new Lee Animations episode.
 Just give me the concept in 2-3 sentences — the situation, the conflict, and why it's funny.
 Do NOT write the script, just the concept.`,
@@ -134,7 +151,7 @@ Do NOT write the script, just the concept.`,
   // Step 2: Generate reading script
   log("script", "Generating reading script...");
   const readingScript = await aiChat(
-    LEE_ANIMATIONS_SYSTEM,
+    systemPrompt,
     `Write the full narration script for this story concept:
 
 "${concept}"

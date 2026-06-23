@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { Button } from '#/components/ui/button.tsx'
-import { ScrollArea } from '#/components/ui/scroll-area.tsx'
 import { marked } from 'marked'
 
 export const Route = createFileRoute('/brief')({ component: MorningBrief })
@@ -40,6 +39,18 @@ function MorningBrief() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [running, setRunning] = useState(false)
+
+  const handleNewEpisode = async () => {
+    setRunning(true)
+    try {
+      await fetch('http://localhost:3737/brief/today', { method: 'DELETE' })
+      const res = await fetch('http://localhost:3737/brief/run', { method: 'POST' })
+      if (!res.ok) throw new Error()
+      const m = await res.json() as Manifest
+      setManifest(m)
+      setError(false)
+    } catch { setError(true) } finally { setRunning(false) }
+  }
 
   const fetchToday = () => {
     setLoading(true)
@@ -81,10 +92,14 @@ function MorningBrief() {
           </Link>
         </div>
         <span className="text-sm font-semibold text-foreground">Morning Brief</span>
-        <div className="w-20" />
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" className="text-xs" onClick={handleNewEpisode} disabled={running}>
+            New Episode
+          </Button>
+        </div>
       </div>
 
-      <ScrollArea className="flex-1">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-2xl px-6 py-10">
           {loading && !running && (
             <div className="flex items-center justify-center py-20">
@@ -105,7 +120,7 @@ function MorningBrief() {
             } catch { setError(true) } finally { setRunning(false) }
           }} />}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   )
 }
