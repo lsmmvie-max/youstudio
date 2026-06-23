@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Button } from '#/components/ui/button.tsx'
 import { ScrollArea } from '#/components/ui/scroll-area.tsx'
+import WaveSurfer from 'wavesurfer.js'
 
 export const Route = createFileRoute('/voice')({ component: VoiceBooth })
 
@@ -34,7 +35,8 @@ function VoiceBooth() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const teleprompterRef = useRef<HTMLDivElement>(null)
   const scrollAnimRef = useRef<number>(0)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const wavesurferContainerRef = useRef<HTMLDivElement>(null)
+  const wavesurferRef = useRef<WaveSurfer | null>(null)
 
   const fetchTakes = useCallback(() => {
     fetch(`${API}/voice/takes`)
@@ -51,7 +53,7 @@ function VoiceBooth() {
     fetchTakes()
   }, [fetchTakes])
 
-  // Waveform drawing
+  // Live recording waveform
   const drawWaveform = useCallback(() => {
     const canvas = canvasRef.current
     const analyser = analyserRef.current
@@ -85,7 +87,6 @@ function VoiceBooth() {
     draw()
   }, [])
 
-  // Draw idle waveform
   const drawIdle = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -93,7 +94,6 @@ function VoiceBooth() {
     if (!ctx) return
     ctx.fillStyle = 'hsl(240 6% 10%)'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
-    // flat line
     ctx.strokeStyle = 'hsl(270 50% 40%)'
     ctx.lineWidth = 1
     ctx.beginPath()
@@ -188,20 +188,47 @@ function VoiceBooth() {
   }
 
   const playTake = (filename: string, id: string) => {
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current = null
+    if (wavesurferRef.current) {
+      wavesurferRef.current.destroy()
+      wavesurferRef.current = null
     }
     if (playingId === id) {
       setPlayingId(null)
       return
     }
-    const audio = new Audio(`${API}/voice/audio/${filename}`)
-    audio.onended = () => setPlayingId(null)
-    audio.play()
-    audioRef.current = audio
+
+    const container = wavesurferContainerRef.current
+    if (!container) return
+
+    const ws = WaveSurfer.create({
+      container,
+      waveColor: '#7C3AED',
+      progressColor: '#5b21b6',
+      cursorColor: '#a855f7',
+      barWidth: 2,
+      barGap: 1,
+      barRadius: 2,
+      height: 80,
+      url: `${API}/voice/audio/${filename}`,
+    })
+
+    ws.on('finish', () => {
+      setPlayingId(null)
+    })
+
+    ws.on('ready', () => {
+      ws.play()
+    })
+
+    wavesurferRef.current = ws
     setPlayingId(id)
   }
+
+  useEffect(() => {
+    return () => {
+      wavesurferRef.current?.destroy()
+    }
+  }, [])
 
   const transcribeLatest = () => {
     setTranscribing(true)
@@ -267,7 +294,6 @@ function VoiceBooth() {
                   <p key={i} className="mb-4 text-xs leading-relaxed text-foreground/70">{p}</p>
                 ))
               )}
-              {/* Extra padding so script can scroll past the visible area */}
               <div className="h-[60vh]" />
             </div>
           </div>
@@ -301,13 +327,31 @@ function VoiceBooth() {
             </p>
           </div>
 
-          {/* Waveform */}
-          <canvas
-            ref={canvasRef}
-            width={500}
-            height={100}
-            className="w-full max-w-lg rounded-lg border border-border"
-          />
+          {/* Waveform — live recording uses canvas, playback uses WaveSurfer */}
+          {recording ? (
+            <canvas
+              ref={canvasRef}
+              width={500}
+              height={100}
+              className="w-full max-w-lg rounded-lg border border-border"
+            />
+          ) : (
+            <div className="w-full max-w-lg">
+              <div
+                ref={wavesurferContainerRef}
+                className="min-h-[80px] w-full rounded-lg border border-border bg-[hsl(240_6%_10%)]"
+              />
+              {!playingId && (
+                <canvas
+                  ref={canvasRef}
+                  width={500}
+                  height={80}
+                  className="mt-1 w-full rounded-lg border border-border"
+                  style={{ display: wavesurferRef.current ? 'none' : 'block' }}
+                />
+              )}
+            </div>
+          )}
 
           {/* Transcribe button */}
           <div className="flex flex-col items-center gap-2">

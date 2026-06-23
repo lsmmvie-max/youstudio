@@ -177,6 +177,51 @@ router.post("/transcribe", (_req: Request, res: Response) => {
   );
 });
 
+router.get("/transcript", (_req: Request, res: Response) => {
+  const dir = getTodayDir();
+  const selPath = path.join(dir, "selected-take.json");
+
+  if (!fs.existsSync(selPath)) {
+    res.status(404).json({ error: "No take selected" });
+    return;
+  }
+
+  let takeId: string;
+  try {
+    takeId = JSON.parse(fs.readFileSync(selPath, "utf-8")).id;
+  } catch {
+    res.status(500).json({ error: "Failed to read selected take" });
+    return;
+  }
+
+  const txtPath = path.join(dir, `${takeId}-transcript.txt`);
+  const jsonPath = path.join(dir, `${takeId}-transcript.json`);
+
+  if (fs.existsSync(jsonPath)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(jsonPath, "utf-8"));
+      res.json(data);
+      return;
+    } catch {}
+  }
+
+  if (fs.existsSync(txtPath)) {
+    const text = fs.readFileSync(txtPath, "utf-8").trim();
+    res.json({ text, segments: [], mock: false });
+    return;
+  }
+
+  res.json({
+    text: "",
+    segments: [
+      { start: 0, end: 3, text: "Sample caption line one." },
+      { start: 3, end: 6, text: "Sample caption line two." },
+      { start: 6, end: 9, text: "Sample caption line three." },
+    ],
+    mock: true,
+  });
+});
+
 router.get("/audio/:filename", (req: Request, res: Response) => {
   const dir = getTodayDir();
   const filename = String(req.params.filename);

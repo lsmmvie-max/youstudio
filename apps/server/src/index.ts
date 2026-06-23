@@ -15,7 +15,11 @@ const QUEUE_DIR = "C:\\YouStudio\\queue";
 const PORT = 3737;
 const app = express();
 
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
+app.use((_req, res, next) => {
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  next();
+});
 app.use(express.json({ limit: "50mb" }));
 
 app.use("/ai", aiRouter);

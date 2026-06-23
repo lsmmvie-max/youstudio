@@ -2,9 +2,11 @@ import { createContext, useContext, useState, useCallback, useRef, useEffect, ty
 
 export interface TimelineClip {
   id: string
-  type: 'image' | 'audio'
+  type: 'image' | 'audio' | 'caption'
   src: string
   name: string
+  text?: string
+  characterName?: string
   startTime: number
   duration: number
   track: number
@@ -14,7 +16,17 @@ export interface TimelineClip {
   height: number
   rotation: number
   opacity: number
+  volume?: number
 }
+
+export const TRACK_META = [
+  { label: 'BG', color: 'bg-blue-600/40', accent: '#3b82f6' },
+  { label: 'CHR', color: 'bg-purple-600/40', accent: '#7c3aed' },
+  { label: 'VO', color: 'bg-emerald-600/40', accent: '#10b981' },
+  { label: 'MUS', color: 'bg-orange-500/40', accent: '#f97316' },
+] as const
+
+export const TRACK_COUNT = 4
 
 interface TimelineContextValue {
   clips: TimelineClip[]
@@ -22,6 +34,8 @@ interface TimelineContextValue {
   selectedClipId: string | null
   isPlaying: boolean
   totalDuration: number
+  hiddenTracks: Set<number>
+  defaultClipDuration: number
   addClip: (clip: Omit<TimelineClip, 'id' | 'x' | 'y' | 'width' | 'height' | 'rotation' | 'opacity'>) => string
   removeClip: (id: string) => void
   moveClip: (id: string, startTime: number) => void
@@ -31,6 +45,8 @@ interface TimelineContextValue {
   setPlayhead: (time: number) => void
   togglePlay: () => void
   clearTimeline: () => void
+  toggleTrackVisibility: (track: number) => void
+  setDefaultClipDuration: (d: number) => void
 }
 
 const TimelineContext = createContext<TimelineContextValue | null>(null)
@@ -48,10 +64,19 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   const [playheadTime, setPlayheadTime] = useState(0)
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
+  const [hiddenTracks, setHiddenTracks] = useState<Set<number>>(new Set())
+  const [defaultClipDuration, setDefaultClipDuration] = useState(() => {
+    const saved = localStorage.getItem('youstudio-default-clip-duration')
+    return saved ? Number(saved) : 3
+  })
   const animRef = useRef<number>(0)
   const lastFrameRef = useRef<number>(0)
 
   const totalDuration = clips.length === 0 ? 30 : Math.max(...clips.map((c) => c.startTime + c.duration), 30)
+
+  useEffect(() => {
+    localStorage.setItem('youstudio-default-clip-duration', String(defaultClipDuration))
+  }, [defaultClipDuration])
 
   useEffect(() => {
     if (!isPlaying) {
@@ -112,11 +137,22 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     setIsPlaying(false)
   }, [])
 
+  const toggleTrackVisibility = useCallback((track: number) => {
+    setHiddenTracks((prev) => {
+      const next = new Set(prev)
+      if (next.has(track)) next.delete(track)
+      else next.add(track)
+      return next
+    })
+  }, [])
+
   return (
     <TimelineContext.Provider value={{
       clips, playheadTime, selectedClipId, isPlaying, totalDuration,
+      hiddenTracks, defaultClipDuration,
       addClip, removeClip, moveClip, trimClip, selectClip, updateClipProps,
-      setPlayhead, togglePlay, clearTimeline,
+      setPlayhead, togglePlay, clearTimeline, toggleTrackVisibility,
+      setDefaultClipDuration,
     }}>
       {children}
     </TimelineContext.Provider>
