@@ -160,37 +160,56 @@ function VideoClip({ clip, playheadTime, isPlaying }: {
   const imageRef = useRef<Konva.Image>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const animFrameRef = useRef<number>(0)
+  const [videoReady, setVideoReady] = useState(false)
+  const [videoError, setVideoError] = useState(false)
 
   useEffect(() => {
+    setVideoReady(false)
+    setVideoError(false)
+
     const video = document.createElement('video')
-    video.src = clip.src
-    video.crossOrigin = 'anonymous'
     video.playsInline = true
     video.muted = true
     video.preload = 'auto'
+    // Only set crossOrigin for non-blob URLs — blob URLs don't need CORS
+    if (!clip.src.startsWith('blob:')) {
+      video.crossOrigin = 'anonymous'
+    }
+    video.src = clip.src
+    video.load()
+
+    video.onloadeddata = () => setVideoReady(true)
+    video.onerror = () => setVideoError(true)
+
     videoRef.current = video
 
     return () => {
       video.pause()
+      video.onloadeddata = null
+      video.onerror = null
+      video.onseeked = null
       video.src = ''
+      video.load()
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
     }
   }, [clip.src])
 
   useEffect(() => {
     const video = videoRef.current
-    if (!video) return
+    if (!video || !videoReady) return
     video.playbackRate = clip.speed ?? 1
-  }, [clip.speed])
+  }, [clip.speed, videoReady])
 
   useEffect(() => {
     const video = videoRef.current
-    if (!video) return
+    if (!video || !videoReady) return
     const relTime = playheadTime - clip.startTime
     if (relTime < 0 || relTime > clip.duration) return
 
     if (isPlaying) {
-      video.currentTime = relTime
+      if (Math.abs(video.currentTime - relTime) > 0.3) {
+        video.currentTime = relTime
+      }
       video.play().catch(() => {})
 
       const updateFrame = () => {
@@ -219,9 +238,35 @@ function VideoClip({ clip, playheadTime, isPlaying }: {
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
     }
-  }, [playheadTime, isPlaying, clip.startTime, clip.duration])
+  }, [playheadTime, isPlaying, clip.startTime, clip.duration, videoReady])
 
   const interp = interpolateClip(clip, playheadTime)
+
+  if (videoError) {
+    return (
+      <>
+        <Rect
+          x={interp.x}
+          y={interp.y}
+          width={interp.width}
+          height={interp.height}
+          fill="#1a1a2e"
+          cornerRadius={4}
+          listening={false}
+        />
+        <Text
+          x={interp.x}
+          y={interp.y + interp.height / 2 - 14}
+          width={interp.width}
+          text={`Video unavailable\n${clip.name}`}
+          fontSize={24}
+          fill="#666"
+          align="center"
+          listening={false}
+        />
+      </>
+    )
+  }
 
   return (
     <KImage

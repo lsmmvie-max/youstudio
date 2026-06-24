@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from 'react'
+import React, { useRef, useState, useCallback, useEffect } from 'react'
 import { useTimeline, TRACK_META, TRACK_COUNT, type Transition } from './timeline-context.tsx'
 
 const API = 'http://localhost:3737'
@@ -186,11 +186,17 @@ export function Timeline() {
       return
     }
 
-    // Handle URL drops (existing drag from asset panel)
+    // Handle URL drops (from asset panel / media panel)
     const url = e.dataTransfer.getData('text/plain')
     if (!url) return
-    const name = url.split('/').pop() ?? 'clip'
-    addClip({ type: 'image', src: url, name, startTime, duration: defaultClipDuration, track })
+    const mediaType = e.dataTransfer.getData('application/x-media-type')
+    const mediaName = e.dataTransfer.getData('application/x-media-name')
+    const name = mediaName || (url.split('/').pop() ?? 'clip')
+    if (mediaType === 'video') {
+      addClip({ type: 'video', src: url, name, startTime, duration: 10, track })
+    } else {
+      addClip({ type: 'image', src: url, name, startTime, duration: defaultClipDuration, track })
+    }
   }, [addClip, defaultClipDuration])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -500,8 +506,16 @@ export function Timeline() {
                     ? transitions.find((t) => t.fromClipId === clip.id && t.toClipId === nextClip.id)
                     : null
 
+                  const clipEndPx = (clip.startTime + clip.duration) * PIXELS_PER_SECOND
+                  const transitionColor = transitionBetween
+                    ? transitionBetween.type === 'fade' ? '#f59e0b'
+                      : transitionBetween.type === 'dissolve' ? '#8b5cf6'
+                      : transitionBetween.type === 'wipe-left' || transitionBetween.type === 'wipe-right' ? '#3b82f6'
+                      : '#10b981'
+                    : null
+
                   return (
-                    <div key={clip.id}>
+                    <React.Fragment key={clip.id}>
                       <div
                         className={`absolute top-1 cursor-grab select-none overflow-hidden rounded border ${
                           isSelected ? 'border-[#7C3AED] ring-1 ring-[#7C3AED]' : 'border-white/20'
@@ -582,42 +596,42 @@ export function Timeline() {
                         )}
                       </div>
 
-                      {/* Transition indicator triangle */}
-                      {transitionBetween && nextClip && (
+                      {/* Transition zone between adjacent clips */}
+                      {nextClip && (
                         <div
-                          className="absolute z-20 cursor-pointer"
+                          key={`tr-${clip.id}-${nextClip.id}`}
+                          className="group/tr absolute z-20 flex cursor-pointer items-center justify-center"
                           style={{
-                            left: (clip.startTime + clip.duration) * PIXELS_PER_SECOND - 8,
-                            top: 2,
+                            left: clipEndPx - 8,
+                            top: (TRACK_HEIGHT - 16) / 2,
                             width: 16,
-                            height: TRACK_HEIGHT - 8,
+                            height: 16,
                           }}
                           onClick={(e) => {
                             e.stopPropagation()
-                            setTransitionPopover({
-                              fromId: clip.id,
-                              toId: nextClip.id,
-                              x: e.clientX,
-                              y: e.clientY,
-                            })
+                            if (!transitionBetween) {
+                              addTransition(clip.id, nextClip.id, 'fade', 0.5)
+                            } else {
+                              setTransitionPopover({
+                                fromId: clip.id,
+                                toId: nextClip.id,
+                                x: e.clientX,
+                                y: e.clientY,
+                              })
+                            }
                           }}
-                          title={`${transitionBetween.type} (${transitionBetween.duration}s)`}
+                          title={transitionBetween ? `${transitionBetween.type} (${transitionBetween.duration}s) — click to edit` : 'Add transition'}
                         >
-                          <svg width="16" height={TRACK_HEIGHT - 8} viewBox={`0 0 16 ${TRACK_HEIGHT - 8}`}>
-                            <polygon
-                              points={`0,0 16,${(TRACK_HEIGHT - 8) / 2} 0,${TRACK_HEIGHT - 8}`}
-                              fill={
-                                transitionBetween.type === 'fade' ? '#f59e0b' :
-                                transitionBetween.type === 'dissolve' ? '#8b5cf6' :
-                                transitionBetween.type === 'wipe-left' || transitionBetween.type === 'wipe-right' ? '#3b82f6' :
-                                '#10b981'
-                              }
-                              opacity={0.7}
-                            />
-                          </svg>
+                          {transitionBetween ? (
+                            <svg width="12" height="12" viewBox="0 0 12 12">
+                              <polygon points="0,0 12,6 0,12" fill={transitionColor!} opacity={0.85} />
+                            </svg>
+                          ) : (
+                            <span className="text-[10px] leading-none text-white/0 group-hover/tr:text-white/50">+</span>
+                          )}
                         </div>
                       )}
-                    </div>
+                    </React.Fragment>
                   )
                 })}
               </div>

@@ -218,6 +218,7 @@ function MediaGrid({ items, onRemove }: { items: MediaItem[]; onRemove: (idx: nu
           onDragStart={(e) => {
             e.dataTransfer.setData('text/plain', item.src)
             e.dataTransfer.setData('application/x-media-type', item.type)
+            e.dataTransfer.setData('application/x-media-name', item.name)
           }}
         >
           {item.type === 'video' ? (
