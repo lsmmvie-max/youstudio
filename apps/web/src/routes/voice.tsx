@@ -27,6 +27,7 @@ function VoiceBooth() {
   const [transcript, setTranscript] = useState<string | null>(null)
   const [playingId, setPlayingId] = useState<string | null>(null)
   const [loadedTakeId, setLoadedTakeId] = useState<string | null>(null)
+  const [serverError, setServerError] = useState(false)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -42,8 +43,8 @@ function VoiceBooth() {
   const fetchTakes = useCallback(() => {
     fetch(`${API}/voice/takes`)
       .then((r) => r.json() as Promise<{ takes: Take[]; selected: string | null }>)
-      .then((d) => { setTakes(d.takes); setSelectedTake(d.selected) })
-      .catch(() => {})
+      .then((d) => { setServerError(false); setTakes(d.takes); setSelectedTake(d.selected) })
+      .catch(() => { setServerError(true) })
   }, [])
 
   useEffect(() => {
@@ -236,13 +237,10 @@ function VoiceBooth() {
       const take = takes.find((t) => t.id === id)
       if (take) {
         loadTakeWaveform(take.filename, id)
-        // wait for ready then play
-        setTimeout(() => {
-          wavesurferRef.current?.on('ready', () => {
-            wavesurferRef.current?.play()
-            setPlayingId(id)
-          })
-        }, 50)
+        wavesurferRef.current?.once('ready', () => {
+          wavesurferRef.current?.play()
+          setPlayingId(id)
+        })
       }
       return
     }
@@ -423,9 +421,14 @@ function VoiceBooth() {
             <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Takes</span>
             <span className="text-[10px] text-muted-foreground">{takes.length} recorded</span>
           </div>
+          {serverError && (
+            <div className="shrink-0 border-b border-destructive/30 bg-destructive/10 px-3 py-2">
+              <p className="text-[10px] text-destructive">Server offline — cannot load takes</p>
+            </div>
+          )}
           <ScrollArea className="flex-1">
             <div className="flex flex-col gap-2 p-3">
-              {takes.length === 0 && (
+              {takes.length === 0 && !serverError && (
                 <p className="py-8 text-center text-xs text-muted-foreground/50">No takes yet. Hit record!</p>
               )}
               {takes.map((take) => (

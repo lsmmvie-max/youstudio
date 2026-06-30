@@ -48,28 +48,30 @@ function AssetForge() {
   const [batchRunning, setBatchRunning] = useState(false)
   const batchAbortRef = useRef(false)
   const [references, setReferences] = useState<{ filename: string; url: string }[]>([])
+  const [serverOffline, setServerOffline] = useState(false)
+  const [generateError, setGenerateError] = useState<string | null>(null)
   const charInputRef = useRef<HTMLInputElement>(null)
   const refInputRef = useRef<HTMLInputElement>(null)
 
   const fetchCharacters = useCallback(() => {
     fetch(`${API}/forge/characters`)
       .then((r) => r.json() as Promise<{ characters: Character[] }>)
-      .then((d) => setCharacters(d.characters))
-      .catch(() => {})
+      .then((d) => { setServerOffline(false); setCharacters(d.characters) })
+      .catch(() => { setServerOffline(true) })
   }, [])
 
   const fetchAssets = useCallback(() => {
     fetch(`${API}/forge/assets`)
       .then((r) => r.json() as Promise<{ assets: Asset[] }>)
-      .then((d) => setAssets(d.assets))
-      .catch(() => {})
+      .then((d) => { setServerOffline(false); setAssets(d.assets) })
+      .catch(() => { setServerOffline(true) })
   }, [])
 
   const fetchReferences = useCallback(() => {
     fetch(`${API}/forge/references`)
       .then((r) => r.json() as Promise<{ references: { filename: string; url: string }[] }>)
-      .then((d) => setReferences(d.references))
-      .catch(() => {})
+      .then((d) => { setServerOffline(false); setReferences(d.references) })
+      .catch(() => { setServerOffline(true) })
   }, [])
 
   useEffect(() => {
@@ -128,6 +130,7 @@ function AssetForge() {
     if (!prompt.trim()) return
     setGenerating(true)
     setGeneratedUrl(null)
+    setGenerateError(null)
     try {
       const res = await fetch(`${API}/forge/generate`, {
         method: 'POST',
@@ -140,6 +143,7 @@ function AssetForge() {
       fetchAssets()
     } catch {
       setGeneratedUrl(null)
+      setGenerateError('Generation failed. Check server and API keys.')
     } finally {
       setGenerating(false)
     }
@@ -242,6 +246,12 @@ function AssetForge() {
         <span className="text-sm font-semibold text-foreground">Asset Forge</span>
         <div className="w-20" />
       </div>
+
+      {serverOffline && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-destructive/30 bg-destructive/10 px-4 py-2">
+          <span className="text-xs text-destructive">Server offline (localhost:3737) — start the server to use Asset Forge</span>
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1">
         {/* Left — Character Library */}
@@ -369,6 +379,7 @@ function AssetForge() {
               <Button size="sm" onClick={generateSingle} disabled={generating || !prompt.trim()}>
                 {generating ? 'Generating...' : 'Generate'}
               </Button>
+              {generateError && <span className="text-xs text-destructive">{generateError}</span>}
               {generatedUrl && (
                 <img src={generatedUrl} alt="Generated" className="h-16 rounded border border-border object-cover" />
               )}

@@ -129,8 +129,22 @@ function renderMd(text: string): string {
   return marked.parse(text, { async: false }) as string
 }
 
+function parseTimestampToSeconds(ts: string): number {
+  const parts = ts.split(':').map(Number)
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2]
+  if (parts.length === 2) return parts[0] * 60 + parts[1]
+  return 0
+}
+
 function BriefContent({ manifest, onRegenerate }: { manifest: Manifest; onRegenerate: () => void }) {
   const navigate = useNavigate()
+
+  const handleBlockClick = (block: EditingBlock) => {
+    const seconds = parseTimestampToSeconds(block.timestamp)
+    const frame = Math.round(seconds * 30)
+    console.log('[Brief] block clicked → timestamp:', block.timestamp, '→ seconds:', seconds, '→ frame:', frame)
+    localStorage.setItem('youstudio-seek-frame', String(frame))
+  }
 
   const handleStartEpisode = () => {
     localStorage.setItem('youstudio-autoload-forge', '1')
@@ -166,7 +180,11 @@ function BriefContent({ manifest, onRegenerate }: { manifest: Manifest; onRegene
           {manifest.editingScript.map((block, i) => (
             <div
               key={i}
-              className={`rounded-md border p-3 ${block.style === 'INTENSE' ? 'border-primary/40 bg-primary/5' : 'border-border bg-muted/30'}`}
+              onClick={() => handleBlockClick(block)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && handleBlockClick(block)}
+              className={`cursor-pointer rounded-md border p-3 transition-opacity hover:opacity-80 ${block.style === 'INTENSE' ? 'border-primary/40 bg-primary/5' : 'border-border bg-muted/30'}`}
             >
               <div className="mb-1 flex items-center gap-2">
                 <span className="text-[10px] font-mono text-muted-foreground">{block.timestamp}</span>

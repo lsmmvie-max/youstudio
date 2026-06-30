@@ -73,7 +73,7 @@ export function AiChat() {
     setLoading(true)
 
     try {
-      const [chatRes, cmdRes] = await Promise.all([
+      const [chatResult, cmdResult] = await Promise.allSettled([
         fetch('http://localhost:3737/ai/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -91,12 +91,18 @@ export function AiChat() {
         }),
       ])
 
-      const chatData = (await chatRes.json()) as { choices?: { message?: { content?: string } }[] }
-      const reply = chatData.choices?.[0]?.message?.content ?? 'No response'
-      const newMessages: Message[] = [{ role: 'assistant', content: reply }]
+      const newMessages: Message[] = []
 
-      if (cmdRes.ok) {
-        const cmd = (await cmdRes.json()) as TimelineCommand
+      if (chatResult.status === 'fulfilled' && chatResult.value.ok) {
+        const chatData = (await chatResult.value.json()) as { choices?: { message?: { content?: string } }[] }
+        const reply = chatData.choices?.[0]?.message?.content ?? 'No response'
+        newMessages.push({ role: 'assistant', content: reply })
+      } else {
+        newMessages.push({ role: 'assistant', content: 'Failed to reach AI server.' })
+      }
+
+      if (cmdResult.status === 'fulfilled' && cmdResult.value.ok) {
+        const cmd = (await cmdResult.value.json()) as TimelineCommand
         if (cmd.command && cmd.command !== 'none') {
           const actionMsg = executeCommand(cmd)
           if (actionMsg) {
